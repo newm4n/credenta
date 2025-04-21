@@ -71,7 +71,7 @@ func (store *CredentaDB) NewUser(realm, id, password string, groups []string, id
 		Id:                 fmt.Sprintf("%s IN %s", id, realm),
 		IDType:             idType,
 		Groups:             groups,
-		Attributes:         make([]*Attribute, 0),
+		Attributes:         make(map[string]*Attribute),
 		RoleMasks:          make([]uint64, 10),
 		VerificationMethod: vMethod,
 		VerificationHash:   hash,

@@ -2,7 +2,6 @@ package credenta
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -18,12 +17,12 @@ const (
 type IdType string
 
 type CUser struct {
-	Realm      string       `json:"realm"`
-	Id         string       `json:"id"`
-	IDType     IdType       `json:"idType"`
-	Groups     []string     `json:"groups,omitempty"`
-	Attributes []*Attribute `json:"attributes"`
-	RoleMasks  []uint64     `json:"roleMasks"`
+	Realm      string                `json:"realm"`
+	Id         string                `json:"id"`
+	IDType     IdType                `json:"idType"`
+	Groups     []string              `json:"groups,omitempty"`
+	Attributes map[string]*Attribute `json:"attributes"`
+	RoleMasks  []uint64              `json:"roleMasks"`
 
 	VerificationMethod VerificationMethod `json:"method"`
 	VerificationHash   string             `json:"hash"`
@@ -79,7 +78,11 @@ func (user *CUser) SortAttributes() []*Attribute {
 	if user.Attributes == nil {
 		return make([]*Attribute, 0)
 	}
-	copyAttribute := user.Attributes
+	copyAttribute := make([]*Attribute, len(user.Attributes))
+	i := 0
+	for k := range user.Attributes {
+		copyAttribute[i] = user.Attributes[k]
+	}
 	sort.Slice(copyAttribute, func(i, j int) bool {
 		return copyAttribute[i].Seq < copyAttribute[j].Seq
 	})
@@ -101,8 +104,10 @@ func (user *CUser) HasAttribute(name string) bool {
 	if user.Attributes == nil {
 		return false
 	}
-	for _, attr := range user.Attributes {
-		if strings.EqualFold(attr.Name, name) {
+	fmt.Printf("Looking for %s in %d\n", name, len(user.Attributes))
+	for k, _ := range user.Attributes {
+		fmt.Printf("Found %s\n", k)
+		if strings.EqualFold(k, name) {
 			return true
 		}
 	}
@@ -110,9 +115,9 @@ func (user *CUser) HasAttribute(name string) bool {
 }
 func (user *CUser) RemoveAttribute(name string) {
 	if user.Attributes != nil {
-		for i, attr := range user.Attributes {
-			if strings.EqualFold(attr.Name, name) {
-				user.Attributes = append(user.Attributes[:i], user.Attributes[i+1:]...)
+		for key, _ := range user.Attributes {
+			if strings.EqualFold(key, name) {
+				delete(user.Attributes, key)
 			}
 		}
 		for i, attr := range user.SortAttributes() {
@@ -121,9 +126,7 @@ func (user *CUser) RemoveAttribute(name string) {
 	}
 }
 func (user *CUser) RemoveAllAttributes() {
-	if user.Attributes != nil {
-		user.Attributes = user.Attributes[:0]
-	}
+	user.Attributes = make(map[string]*Attribute)
 }
 func (user *CUser) GetsAttribute(name string) (string, error) {
 	if user.Attributes != nil {
@@ -133,7 +136,7 @@ func (user *CUser) GetsAttribute(name string) (string, error) {
 			}
 		}
 	}
-	return "", errors.New("attribute not found")
+	return "", fmt.Errorf("attribute not found")
 }
 func (user *CUser) GetiAttribute(name string) (int, error) {
 	if user.Attributes != nil {
@@ -143,7 +146,7 @@ func (user *CUser) GetiAttribute(name string) (int, error) {
 			}
 		}
 	}
-	return -1, errors.New("attribute not found")
+	return -1, fmt.Errorf("attribute not found")
 }
 func (user *CUser) GetfAttribute(name string) (float64, error) {
 	if user.Attributes != nil {
@@ -153,7 +156,7 @@ func (user *CUser) GetfAttribute(name string) (float64, error) {
 			}
 		}
 	}
-	return -1, errors.New("attribute not found")
+	return -1, fmt.Errorf("attribute not found")
 }
 func (user *CUser) GetbAttribute(name string) (bool, error) {
 	if user.Attributes != nil {
@@ -163,77 +166,75 @@ func (user *CUser) GetbAttribute(name string) (bool, error) {
 			}
 		}
 	}
-	return false, errors.New("attribute not found")
+	return false, fmt.Errorf("attribute not found")
 }
 
 func (user *CUser) SetsAttribute(name, value string) error {
-	if user.Attributes != nil {
-		user.Attributes = make([]*Attribute, 0)
+	if user.Attributes == nil {
+		user.Attributes = make(map[string]*Attribute)
 	}
 	if user.HasAttribute(name) {
-		return errors.New("attribute already exists")
+		return fmt.Errorf("attribute already exists")
 	}
-	user.Attributes = append(user.Attributes, &Attribute{
+	user.Attributes[name] = &Attribute{
 		Name:         name,
 		Seq:          len(user.Attributes),
 		StringValue:  value,
 		IntegerValue: 0,
 		FloatValue:   0,
 		BoolValue:    false,
-	})
+	}
 	return nil
 }
 func (user *CUser) SetiAttribute(name string, value int) error {
-	if user.Attributes != nil {
-		user.Attributes = make([]*Attribute, 0)
+	if user.Attributes == nil {
+		user.Attributes = make(map[string]*Attribute)
 	}
 	if user.HasAttribute(name) {
-		fmt.Print("NOK")
-		return errors.New("attribute already exists")
+		return fmt.Errorf("attribute already exists")
 	}
-	fmt.Print("OK")
-	user.Attributes = append(user.Attributes, &Attribute{
+	user.Attributes[name] = &Attribute{
 		Name:         name,
 		Seq:          len(user.Attributes),
 		StringValue:  "",
 		IntegerValue: value,
 		FloatValue:   0,
 		BoolValue:    false,
-	})
+	}
 	return nil
 }
 func (user *CUser) SetfAttribute(name string, value float64) error {
-	if user.Attributes != nil {
-		user.Attributes = make([]*Attribute, 0)
+	if user.Attributes == nil {
+		user.Attributes = make(map[string]*Attribute)
 	}
 	if user.HasAttribute(name) {
-		return errors.New("attribute already exists")
+		return fmt.Errorf("attribute already exists")
 	}
-	user.Attributes = append(user.Attributes, &Attribute{
+	user.Attributes[name] = &Attribute{
 		Name:         name,
 		Seq:          len(user.Attributes),
 		StringValue:  "",
 		IntegerValue: 0,
 		FloatValue:   value,
 		BoolValue:    false,
-	})
+	}
 	return nil
 }
 func (user *CUser) SetbAttribute(name string, value bool) error {
-	if user.Attributes != nil {
-		user.Attributes = make([]*Attribute, 0)
+	if user.Attributes == nil {
+		user.Attributes = make(map[string]*Attribute)
 	}
 	if user.HasAttribute(name) {
-		return errors.New("attribute already exists")
+		return fmt.Errorf("attribute already exists")
 	}
-	user.Attributes = append(user.Attributes, &Attribute{
+	user.Attributes[name] = &Attribute{
 		Name:         name,
 		Seq:          len(user.Attributes),
 		StringValue:  "",
 		IntegerValue: 0,
 		FloatValue:   0,
 		BoolValue:    value,
-	})
+	}
 	return nil
 }
 
