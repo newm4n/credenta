@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 )
 
 const (
@@ -29,6 +30,11 @@ type CUser struct {
 
 	Enable bool `json:"enable"`
 	Active bool `json:"active"`
+
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy string    `json:"createdBy"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	UpdatedBy string    `json:"updatedBy"`
 }
 
 func toUint64ByBit(roleSquence int) (uintSeq int, bitno int) {

@@ -3,12 +3,24 @@ package credenta
 import (
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
-func TestCredentaDB_GetUser(t *testing.T) {
-	cdb := NewCredentaDB()
+func TestStartDB(t *testing.T) {
+	assert.NoError(t, StartDB())
+	reloadUserChannel <- "User To Reload"
+	StopDB()
+	for DBStarted {
+		time.Sleep(50 * time.Millisecond)
+	}
+}
 
-	u, err := cdb.NewUser("DEFAULT", "USERID", "password", nil, IdTypeUserId, VerificationMethodPLAIN)
+func TestCredentaDB_GetUser(t *testing.T) {
+	// cdb := NewCredentaDB()
+	authDB, err := NewAuthDB(".", "/data/user", "/data/group")
+	assert.NoError(t, err)
+
+	u, err := authDB.NewUser("DEFAULT", "USERID", "password", nil, IdTypeUserId, VerificationMethodPLAIN)
 
 	assert.NoError(t, err)
 	u.AddRole(0)
@@ -34,6 +46,6 @@ func TestCredentaDB_GetUser(t *testing.T) {
 	u.RemoveRole(64)
 	t.Log(u)
 
-	_, err = cdb.NewUser("DEFAULT", "USERID", "password", nil, IdTypeUserId, VerificationMethodPLAIN)
+	_, err = authDB.NewUser("DEFAULT", "USERID", "password", nil, IdTypeUserId, VerificationMethodPLAIN)
 	assert.Error(t, err)
 }

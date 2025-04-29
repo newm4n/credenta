@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 type CGroup struct {
@@ -12,6 +13,11 @@ type CGroup struct {
 	Name         string       `json:"name" :"name"`
 	ParentGroups []string     `json:"parentGroups" :"parentGroups"`
 	Attributes   []*Attribute `json:"attributes"`
+
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy string    `json:"createdBy"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	UpdatedBy string    `json:"updatedBy"`
 }
 
 func (grp *CGroup) GetAttributeList() []string {
