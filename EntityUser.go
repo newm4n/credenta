@@ -1,9 +1,13 @@
 package credenta
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -18,6 +22,8 @@ const (
 type IdType string
 
 type CUser struct {
+	FilePath string `json:"-"`
+
 	Realm      string                `json:"realm"`
 	Id         string                `json:"id"`
 	IDType     IdType                `json:"idType"`
@@ -37,26 +43,93 @@ type CUser struct {
 	UpdatedBy string    `json:"updatedBy"`
 }
 
-func toUint64ByBit(roleSquence int) (uintSeq int, bitno int) {
-	left := math.Mod(float64(roleSquence), 64.0)
-	div := roleSquence / 64
-	return div, int(left)
+func (user *CUser) StoreOrSaveToFile(ctx context.Context) error {
+	user.UpdatedBy = ctx.Value(ETX_USER).(string)
+	user.UpdatedAt = time.Now()
+
+	data, err := json.Marshal(user)
+
+	if err != nil {
+		return fmt.Errorf("in StoreOrSaveToFile function, error marshalling user: %w", err)
+	}
+	if _, err := os.Stat(user.FilePath); err == nil {
+		f, err := os.Open(user.FilePath)
+		if err != nil {
+			return fmt.Errorf("in StoreOrSaveToFile function. error opening file %s: %w", user.FilePath, err)
+		}
+		defer f.Close()
+		err = f.Truncate(0)
+		if err != nil {
+			return fmt.Errorf("in writeDataToFile function. error truncate file %s: %w", user.FilePath, err)
+		}
+		_, err = f.Seek(0, 0)
+		if err != nil {
+			return fmt.Errorf("in StoreOrSaveToFile function. error seek in file %s: %w", user.FilePath, err)
+		}
+		_, err = f.Write(data)
+		if err != nil {
+			return fmt.Errorf("in StoreOrSaveToFile function. error writing into file %s: %w", user.FilePath, err)
+		}
+	} else if os.IsNotExist(err) {
+		file, err := os.Create(user.FilePath)
+		if err != nil {
+			return fmt.Errorf("in StoreOrSaveToFile function. error creating file %s: %w", user.FilePath, err)
+		}
+		defer file.Close()
+		_, err = file.Write(data)
+		if err != nil {
+			return fmt.Errorf("in StoreOrSaveToFile function. error writing data to file %s: %w", user.FilePath, err)
+		}
+	} else {
+		return fmt.Errorf("in StoreOrSaveToFile function. error obtaining stat of file %s: %w", user.FilePath, err)
+	}
+	return nil
 }
 
-func isBitFlagOn(currentBit uint64, bitSequence int) bool {
-	flipper := uint64(1) << bitSequence
-	return flipper == currentBit|flipper
+func (user *CUser) ReloadFromFile(ctx context.Context) error {
+	file, err := os.Open(user.FilePath)
+	if err != nil {
+		return fmt.Errorf("in ReloadFromFile function, error opening file %s: %w", user.FilePath, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	buff := bytes.Buffer{}
+
+	for scanner.Scan() {
+		buff.Write(scanner.Bytes())
+	}
+
+	nUser := &CUser{}
+
+	err = json.Unmarshal(buff.Bytes(), &nUser)
+	if err != nil {
+		return fmt.Errorf("in ReloadFromFile function, error unmarshaling data into CUser: %w", err)
+	}
+
+	user.Realm = nUser.Realm
+	user.Id = nUser.Id
+	user.IDType = nUser.IDType
+	user.Groups = nUser.Groups
+	user.Attributes = nUser.Attributes
+	user.RoleMasks = nUser.RoleMasks
+
+	user.VerificationMethod = nUser.VerificationMethod
+	user.VerificationHash = nUser.VerificationHash
+
+	user.Enable = nUser.Enable
+	user.Active = nUser.Active
+
+	user.CreatedAt = nUser.CreatedAt
+	user.CreatedBy = nUser.CreatedBy
+	user.UpdatedAt = nUser.UpdatedAt
+	user.UpdatedBy = nUser.UpdatedBy
+
+	return nil
 }
 
-func setBitFlagOn(currentBit uint64, bitSequence int) uint64 {
-	flipper := uint64(1) << bitSequence
-	return currentBit | flipper
-}
-
-func setBitFlagOff(currentBit uint64, bitSequence int) uint64 {
-	flipper := uint64(1) << bitSequence
-	notFlipper := 0xFFFFFFFF ^ flipper
-	return currentBit & notFlipper
+func (user *CUser) DeleteFile(ctx context.Context) error {
+	return os.Remove(user.FilePath)
 }
 
 func (user *CUser) AddRole(roleSquence int) {
@@ -250,4 +323,26 @@ func (user *CUser) String() string {
 		return fmt.Sprintf("error %v", err)
 	}
 	return string(jsonBytes)
+}
+
+func toUint64ByBit(roleSquence int) (uintSeq int, bitno int) {
+	left := math.Mod(float64(roleSquence), 64.0)
+	div := roleSquence / 64
+	return div, int(left)
+}
+
+func isBitFlagOn(currentBit uint64, bitSequence int) bool {
+	flipper := uint64(1) << bitSequence
+	return flipper == currentBit&flipper
+}
+
+func setBitFlagOn(currentBit uint64, bitSequence int) uint64 {
+	flipper := uint64(1) << bitSequence
+	return currentBit | flipper
+}
+
+func setBitFlagOff(currentBit uint64, bitSequence int) uint64 {
+	flipper := uint64(1) << bitSequence
+	notFlipper := 0xFFFFFFFF ^ flipper
+	return currentBit & notFlipper
 }

@@ -36,3 +36,25 @@ func TestAddRole(t *testing.T) {
 		assert.Equal(t, uint64(0), zint)
 	}
 }
+
+func TestBitFlagOn(t *testing.T) {
+	assert.True(t, isBitFlagOn(1, 0))
+	assert.True(t, isBitFlagOn(7, 0))
+	assert.True(t, isBitFlagOn(7, 1))
+	assert.True(t, isBitFlagOn(7, 2))
+}
+
+func TestBitShift(t *testing.T) {
+	flipper := uint64(1) << 0
+	t.Log(flipper)
+	assert.True(t, isBitFlagOn(1, 0))
+	assert.True(t, isBitFlagOn(2, 1))
+	assert.True(t, isBitFlagOn(3, 1))
+
+	flipper = uint64(1) << 1
+	t.Log(flipper)
+
+	assert.True(t, isBitFlagOn(7, 0))
+	assert.True(t, isBitFlagOn(7, 1))
+	assert.True(t, isBitFlagOn(7, 2))
+}

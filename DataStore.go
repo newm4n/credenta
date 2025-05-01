@@ -1,105 +1,32 @@
 package credenta
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"sync"
+	"os"
+	"strings"
 	"time"
 )
 
-var (
-	credentaDB             *CredentaDB
-	authDB                 *AuthDB
-	reloadUserChannel      = make(chan string)
-	reloadGroupChannel     = make(chan string)
-	saveUpdateUserChannel  = make(chan string)
-	saveUpdateGroupChannel = make(chan string)
-	killChannel            = make(chan bool)
-	userMutext             = sync.Mutex{}
-	groupMutext            = sync.Mutex{}
+const (
+	RoleMaskCount = 10
+)
 
-	DBStarted bool = false
+var (
+	credentaDB *CredentaDB
 )
 
 func init() {
-	credentaDB = NewCredentaDB()
-	aDB, err := NewAuthDB(".", "/data/user", "/data/group")
+	cDB, err := NewCredentaDB(".", "/data/user", "/data/group")
 	if err != nil {
-		fmt.Errorf("FATAL NewAuthDB error: %v", err)
+		panic(err)
 	}
-	authDB = aDB
+	credentaDB = cDB
 }
 
-func StopDB() {
-	DBStarted = false
-	killChannel <- true
-}
-
-func StartDB() error {
-	if authDB == nil {
-		return fmt.Errorf("authDB is not started")
-	}
-	if DBStarted {
-		return fmt.Errorf("already started")
-	}
-	DBStarted = true
-	go func() {
-		for {
-			select {
-			case userKeyToLoad := <-reloadUserChannel:
-				userMutext.Lock()
-				defer userMutext.Unlock()
-
-				// TODO do not forget to pass on the realm
-				err := authDB.ReloadUser(userKeyToLoad)
-				if err != nil {
-					fmt.Println(err)
-				}
-			case groupKeyToLoad := <-reloadGroupChannel:
-				groupMutext.Lock()
-				defer groupMutext.Unlock()
-
-				// TODO do not forget to pass on the realm
-				err := authDB.ReloadGroup(groupKeyToLoad)
-				if err != nil {
-					fmt.Println(err)
-				}
-			case userKeyToUpdate := <-saveUpdateUserChannel:
-				userMutext.Lock()
-				defer userMutext.Unlock()
-
-				// TODO do not forget to pass on the realm
-				err := authDB.UpdateOrSaveUser(userKeyToUpdate)
-				if err != nil {
-					fmt.Println(err)
-				}
-			case groupKeyToUpdate := <-saveUpdateGroupChannel:
-				groupMutext.Lock()
-				defer groupMutext.Unlock()
-
-				// TODO do not forget to pass on the realm
-				err := authDB.UpdateOrSaveGroup(groupKeyToUpdate)
-				if err != nil {
-					fmt.Println(err)
-				}
-			case <-killChannel:
-				fmt.Println("Called killChannel")
-				DBStarted = false
-				return
-			default:
-				// Optional: Add a default case to avoid blocking
-				// if there's no data in the channel
-				// fmt.Println("No data yet")
-				time.Sleep(100 * time.Millisecond) // avoid busy-waiting
-			}
-		}
-		fmt.Println("Go func returned")
-	}()
-	return nil
-}
-
-func NewCredentaDB() *CredentaDB {
-	return &CredentaDB{
+func NewCredentaDB(baseFolder, userFolder, groupFolder string) (*CredentaDB, error) {
+	cDB := &CredentaDB{
 		DefaultRealm: "DEFAULT",
 		PassPolicy: &PassphrasePolicy{
 			WordCount:               1,
@@ -109,187 +36,235 @@ func NewCredentaDB() *CredentaDB {
 			MustHaveNumeric:         false,
 			MustHaveSymbol:          false,
 		},
+		BaseFolder:  baseFolder,
+		UserFolder:  userFolder,
+		GroupFolder: groupFolder,
 	}
+	return cDB, nil
 }
 
 type CredentaDB struct {
 	DefaultRealm string            `json:"defaultRealm"`
 	PassPolicy   *PassphrasePolicy `json:"passPolicy"`
+	BaseFolder   string            `json:"baseFolder"`
+	UserFolder   string            `json:"userFolder"`
+	GroupFolder  string            `json:"groupFolder"`
 }
 
-func NewAuthDB(baseFolder, userFolder, groupFolder string) (*AuthDB, error) {
-	adb := &AuthDB{
-		Users:       make(map[string]*CUser),  // KEY is UID_IN_REALM
-		Groups:      make(map[string]*CGroup), // KEY is NAME_IN_REALM
-		BaseFolder:  baseFolder,
-		UserFolder:  userFolder,
-		GroupFolder: groupFolder,
+func (store *CredentaDB) GetRoleMasksOfGroups(ctx context.Context, realm, group string) []uint64 {
+	ret := make([]uint64, RoleMaskCount)
+	theGroup, err := store.GetGroup(ctx, realm, group)
+	if err != nil || theGroup == nil {
+		return ret
 	}
-	err := adb.ReloadAuthDB()
-	if err != nil {
-		return nil, err
-	}
-	return adb, nil
-}
 
-type AuthDB struct {
-	Users       map[string]*CUser  `json:"users"`  // KEY is UID_IN_REALM
-	Groups      map[string]*CGroup `json:"groups"` // KEY is NAME_IN_REALM
-	BaseFolder  string             `json:"baseFolder"`
-	UserFolder  string             `json:"userFolder"`
-	GroupFolder string             `json:"groupFolder"`
-}
-
-func (store *AuthDB) ReloadAuthDB() error {
-	userMutext.Lock()
-	groupMutext.Lock()
-	defer func() {
-		groupMutext.Unlock()
-		userMutext.Unlock()
-	}()
-
-	userMap, err := LoadAllUserData(store.BaseFolder, store.UserFolder)
-	if err != nil {
-		return fmt.Errorf("in ReloadAuthDB function error: %v", err)
-	}
-	for realm, userArr := range userMap {
-		for _, theUser := range userArr {
-			store.Users[fmt.Sprintf("%s_IN_%s", theUser.Id, realm)] = theUser
+	if theGroup.ParentGroups == nil || len(theGroup.ParentGroups) == 0 {
+		return theGroup.RoleMasks
+	} else {
+		ret = theGroup.RoleMasks
+		for _, parentGroupName := range theGroup.ParentGroups {
+			parentRoles := store.GetRoleMasksOfGroups(ctx, realm, parentGroupName)
+			for i, rete := range ret {
+				ret[i] = rete | parentRoles[i]
+			}
 		}
+		return ret
 	}
-
-	groupMap, err := LoadAllGroupData(store.BaseFolder, store.GroupFolder)
-	if err != nil {
-		return fmt.Errorf("in ReloadAuthDB function error: %v", err)
-	}
-	for realm, groupArr := range groupMap {
-		for _, theGroup := range groupArr {
-			store.Groups[fmt.Sprintf("%s_IN_%s", theGroup.Name, realm)] = theGroup
-		}
-	}
-
-	return nil
 }
 
-// TODO Finish this function Update the user file in CredentaDB/BaseFolder/UserFolder/REALM@UID.json
-func (store *AuthDB) UpdateOrSaveUser(mapKey string) error {
-	fmt.Println("Called UpdateOrSaveUser")
-	return nil
+func (store *CredentaDB) NewDefaultGroup(ctx context.Context, name string, parentGroup []string) (*CGroup, error) {
+	return store.NewGroup(ctx, credentaDB.DefaultRealm, name, parentGroup)
 }
 
-// TODO Finish this function Update the group file in CredentaDB/BaseFolder/GroupFolder/REALM@Name.json
-func (store *AuthDB) UpdateOrSaveGroup(mapKey string) error {
-	fmt.Println("Called UpdateOrSaveGroup")
-	return nil
-}
-
-// TODO Finish this function Read the user file in CredentaDB/BaseFolder/UserFolder/REALM@UID.json
-func (store *AuthDB) ReloadUser(mapKey string) error {
-	fmt.Println("Called ReloadUser" + mapKey)
-	return nil
-}
-
-// TODO Finish this function Read the group file in CredentaDB/BaseFolder/GroupFolder/REALM@Name.json
-func (store *AuthDB) ReloadGroup(mapKey string) error {
-	fmt.Println("Called ReloadGroup")
-	return nil
-}
-
-func (store *AuthDB) NewDefaultGroup(name string, parentGroup []string) (*CGroup, error) {
-	return store.NewGroup(credentaDB.DefaultRealm, name, parentGroup)
-}
-
-func (store *AuthDB) NewGroup(realm, name string, parentGroup []string) (*CGroup, error) {
+func (store *CredentaDB) NewGroup(ctx context.Context, realm, name string, parentGroup []string) (*CGroup, error) {
 	if realm == "" || name == "" {
 		return nil, errors.New("realm and name is required")
 	}
 
-	if store.Groups == nil {
-		store.Groups = make(map[string]*CGroup)
-	}
-
-	if _, ok := store.Groups[fmt.Sprintf("%s_IN_%s", name, realm)]; ok {
-		return nil, fmt.Errorf("group %s already exists", name)
+	groupFileName := fmt.Sprintf("%s%s/%s_IN_%s.json", store.BaseFolder, store.GroupFolder, name, realm)
+	_, err := os.Stat(groupFileName)
+	if err == nil {
+		return nil, errors.New("group already exists")
 	}
 
 	theGroup := &CGroup{
+		FilePath:     groupFileName,
 		Realm:        realm,
 		Name:         name,
 		ParentGroups: parentGroup,
 		Attributes:   make([]*Attribute, 0),
-	}
+		RoleMasks:    make([]uint64, RoleMaskCount),
 
-	store.Groups[fmt.Sprintf("%s_IN_%s", name, realm)] = theGroup
+		CreatedAt: time.Now(),
+		CreatedBy: ctx.Value(ETX_USER).(string),
+		UpdatedAt: time.Now(),
+		UpdatedBy: ctx.Value(ETX_USER).(string),
+	}
 
 	return theGroup, nil
 }
 
-func (store *AuthDB) NewDefaultUser(id, password string, groups []string, idType IdType, vMethod VerificationMethod) (*CUser, error) {
-	return store.NewUser(credentaDB.DefaultRealm, id, password, groups, idType, vMethod)
+func (store *CredentaDB) NewDefaultUser(ctx context.Context, id, password string, groups []string, idType IdType, vMethod VerificationMethod) (*CUser, error) {
+	return store.NewUser(ctx, credentaDB.DefaultRealm, id, password, groups, idType, vMethod)
 }
 
-func (store *AuthDB) NewUser(realm, id, password string, groups []string, idType IdType, vMethod VerificationMethod) (*CUser, error) {
+func (store *CredentaDB) NewUser(ctx context.Context, realm, id, password string, groups []string, idType IdType, vMethod VerificationMethod) (*CUser, error) {
 	if realm == "" || id == "" || password == "" {
-		return nil, fmt.Errorf("realm, id and password is required")
+		return nil, fmt.Errorf("in NewUser function. realm, id and password is required")
 	}
 
-	valid, err := credentaDB.PassPolicy.IsPasswordValid(password)
+	valid, err := store.PassPolicy.IsPasswordValid(password)
 	if err != nil || !valid {
 		return nil, fmt.Errorf("invalid email password")
 	}
-	if _, ok := store.Users[fmt.Sprintf("%s_IN_%s", id, realm)]; ok {
-		return nil, fmt.Errorf("user %s already exists", id)
-	}
+
 	hash, err := MakeVerification(vMethod, password)
 	if err != nil {
 		return nil, err
 	}
+
+	userFileName := fmt.Sprintf("%s%s/%s_IN_%s.json", store.BaseFolder, store.UserFolder, id, realm)
+	_, err = os.Stat(userFileName)
+	if err == nil {
+		return nil, errors.New("user already exists")
+	}
+
 	theUser := &CUser{
+		FilePath:           userFileName,
 		Realm:              realm,
 		Id:                 id,
 		IDType:             idType,
 		Groups:             groups,
 		Attributes:         make(map[string]*Attribute),
-		RoleMasks:          make([]uint64, 10),
+		RoleMasks:          make([]uint64, RoleMaskCount),
 		VerificationMethod: vMethod,
 		VerificationHash:   hash,
 		Enable:             true,
 		Active:             false,
-	}
 
-	store.Users[fmt.Sprintf("%s_IN_%s", id, realm)] = theUser
+		CreatedAt: time.Time{},
+		CreatedBy: ctx.Value(ETX_USER).(string),
+		UpdatedAt: time.Time{},
+		UpdatedBy: ctx.Value(ETX_USER).(string),
+	}
 
 	return theUser, nil
 }
 
-func (store *AuthDB) GetDefaultUser(id string) (*CUser, error) {
-	return store.GetUser(credentaDB.DefaultRealm, id)
+func (store *CredentaDB) GetDefaultGroup(ctx context.Context, name string) (*CGroup, error) {
+	return store.GetGroup(ctx, store.DefaultRealm, name)
 }
 
-func (store *AuthDB) GetUser(realm, id string) (*CUser, error) {
-	if realm == "" || id == "" {
-		return nil, errors.New("realm and id are required")
+func (store *CredentaDB) GetGroup(ctx context.Context, realm, name string) (*CGroup, error) {
+	if realm == "" || name == "" {
+		return nil, fmt.Errorf("in GetGroup function. realm and name are required")
 	}
-	if usr, ok := store.Users[fmt.Sprintf("%s_IN_%s", id, realm)]; ok {
-		return usr, nil
-	}
-	return nil, fmt.Errorf("user with id %s not found in %s realm", id, realm)
-}
 
-func (store *AuthDB) GetDefaultUserWithAuth(id, password string) (*CUser, error) {
-	return store.GetUserWithAuth(credentaDB.DefaultRealm, id, password)
-}
-
-func (store *AuthDB) GetUserWithAuth(realm, id, password string) (*CUser, error) {
-	if realm == "" || id == "" || password == "" {
-		return nil, errors.New("realm and id and password are required")
+	theGroup := &CGroup{
+		FilePath: fmt.Sprintf("%s%s/%s_IN_%s.json", store.BaseFolder, store.GroupFolder, name, realm),
 	}
-	user, err := store.GetUser(realm, id)
+
+	err := theGroup.ReloadFromFile(ctx)
 	if err != nil {
-		return user, err
+		return nil, err
+	}
+	return theGroup, nil
+}
+
+func (store *CredentaDB) GetDefaultUser(ctx context.Context, id string) (*CUser, error) {
+	return store.GetUser(ctx, store.DefaultRealm, id)
+}
+
+func (store *CredentaDB) GetUser(ctx context.Context, realm, id string) (*CUser, error) {
+	if realm == "" || id == "" {
+		return nil, fmt.Errorf("in GetUser function. realm and id are required")
+	}
+
+	theUser := &CUser{
+		FilePath: fmt.Sprintf("%s%s/%s_IN_%s.json", store.BaseFolder, store.UserFolder, id, realm),
+	}
+
+	err := theUser.ReloadFromFile(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return theUser, nil
+}
+
+func (store *CredentaDB) GetDefaultUserWithAuth(ctx context.Context, id, password string) (*CUser, error) {
+	return store.GetUserWithAuth(ctx, store.DefaultRealm, id, password)
+}
+
+func (store *CredentaDB) GetUserWithAuth(ctx context.Context, realm, id, password string) (*CUser, error) {
+	if realm == "" || id == "" || password == "" {
+		return nil, errors.New("in GetUserWithAuth function. realm and id and password are required")
+	}
+	user, err := store.GetUser(ctx, realm, id)
+	if err != nil {
+		return user, fmt.Errorf("in GetUserWithAuth function : %v", err)
 	}
 	if MatchVerification(user.VerificationMethod, password, user.VerificationHash) {
 		return user, nil
 	}
 	return nil, fmt.Errorf("invalid authentication")
+}
+
+/*
+ListUserIDsFiles will return a map of realm name to array of user id. The function will go to directory with format
+`BaseFolder/UserFolder` and look for file with `USERID_IN_REALM.json` name. It will return an error if no folder with
+that name is found. By default, the BaseFolder is "." which equals to the name of the project.
+*/
+func (store *CredentaDB) ListUserIDs(ctx context.Context) (map[string][]string, error) {
+	if !PathExists(fmt.Sprintf("%s%s", store.BaseFolder, store.UserFolder)) {
+		return nil, fmt.Errorf("in ListUserDataFiles function, folder %s%s not exists", store.BaseFolder, store.UserFolder)
+	}
+	entries, err := os.ReadDir(fmt.Sprintf("%s%s", store.BaseFolder, store.UserFolder))
+	if err != nil {
+		return nil, fmt.Errorf("in ListUserDataFiles function, error reading directory %s%s: %w", store.BaseFolder, store.UserFolder, err)
+	}
+	return store.listDataFiles(ctx, entries), nil
+}
+
+/*
+ListGroupDataFiles will return a map of realm name to array of group name. The function will go to directory with format
+`BaseFolder/GroupFolder` and look for file with `NAME_IN_REALM.json` name. It will return an error if no folder with
+that name is found. By default, the BaseFolder is "." which equals to the name of the project.
+*/
+func (store *CredentaDB) ListGroupNames(ctx context.Context) (map[string][]string, error) {
+	if !PathExists(fmt.Sprintf("%s%s", store.BaseFolder, store.GroupFolder)) {
+		return nil, fmt.Errorf("in ListGroupDataFiles function, folder %s%s not exists", store.BaseFolder, store.GroupFolder)
+	}
+	entries, err := os.ReadDir(fmt.Sprintf("%s%s", store.BaseFolder, store.GroupFolder))
+	if err != nil {
+		return nil, fmt.Errorf("in ListGroupDataFiles function, error reading directory %s%s: %w", store.BaseFolder, store.GroupFolder, err)
+	}
+	return store.listDataFiles(ctx, entries), nil
+}
+
+/*
+listDataFiles return  list map of realm name to data string for each entries. This function will be called by
+ListUserDataFiles or ListGroupDataFiles function.
+*/
+func (store *CredentaDB) listDataFiles(ctx context.Context, entries []os.DirEntry) map[string][]string {
+	ret := make(map[string][]string)
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			n := strings.Split(entry.Name(), ".")
+			ne := strings.Split(n[0], "_IN_")
+			id := ne[0]
+			realm := ne[1]
+			if ids, ok := ret[realm]; ok {
+				ids = append(ids, id)
+			} else {
+				ret[realm] = make([]string, 0)
+				ret[realm] = append(ret[realm], id)
+			}
+		}
+	}
+	return ret
+}
+
+func PathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
