@@ -7,7 +7,7 @@ import (
 )
 
 func TestCredentaDB_GetUser(t *testing.T) {
-	cDB, err := NewCredentaDB(".", "/data/user", "/data/group")
+	cDB, err := NewCredentaDB(".", "/data/user", "/data/group", SimplePasswordPolicy())
 	assert.NoError(t, err)
 
 	ctx := context.WithValue(context.Background(), ETX_USER, "TestUser")
@@ -51,7 +51,7 @@ func TestCredentaDB_GetUser(t *testing.T) {
 }
 
 func TestCredentaDB_GetRoleMasksOfGroups(t *testing.T) {
-	cDB, err := NewCredentaDB(".", "/data/user", "/data/group")
+	cDB, err := NewCredentaDB(".", "/data/user", "/data/group", SimplePasswordPolicy())
 	assert.NoError(t, err)
 
 	ctx := context.WithValue(context.Background(), ETX_USER, "TestUser")

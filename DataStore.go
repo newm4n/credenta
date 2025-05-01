@@ -18,27 +18,42 @@ var (
 )
 
 func init() {
-	cDB, err := NewCredentaDB(".", "/data/user", "/data/group")
+	cDB, err := NewCredentaDB(".", "/data/user", "/data/group", SimplePasswordPolicy())
 	if err != nil {
 		panic(err)
 	}
 	credentaDB = cDB
 }
 
-func NewCredentaDB(baseFolder, userFolder, groupFolder string) (*CredentaDB, error) {
+func SimplePasswordPolicy() *PassphrasePolicy {
+	return &PassphrasePolicy{
+		WordCount:               1,
+		LetterCountPerWord:      8,
+		LetterCountMinimumTotal: 8,
+		MustHaveUpperAlphabet:   false,
+		MustHaveNumeric:         false,
+		MustHaveSymbol:          false,
+	}
+}
+
+func StrongPasswordPolicy() *PassphrasePolicy {
+	return &PassphrasePolicy{
+		WordCount:               3,
+		LetterCountPerWord:      5,
+		LetterCountMinimumTotal: 12,
+		MustHaveUpperAlphabet:   true,
+		MustHaveNumeric:         true,
+		MustHaveSymbol:          true,
+	}
+}
+
+func NewCredentaDB(baseFolder, userFolder, groupFolder string, passphrasePolicy *PassphrasePolicy) (*CredentaDB, error) {
 	cDB := &CredentaDB{
 		DefaultRealm: "DEFAULT",
-		PassPolicy: &PassphrasePolicy{
-			WordCount:               1,
-			LetterCountPerWord:      8,
-			LetterCountMinimumTotal: 8,
-			MustHaveUpperAlphabet:   false,
-			MustHaveNumeric:         false,
-			MustHaveSymbol:          false,
-		},
-		BaseFolder:  baseFolder,
-		UserFolder:  userFolder,
-		GroupFolder: groupFolder,
+		PassPolicy:   passphrasePolicy,
+		BaseFolder:   baseFolder,
+		UserFolder:   userFolder,
+		GroupFolder:  groupFolder,
 	}
 	return cDB, nil
 }
@@ -204,6 +219,12 @@ func (store *CredentaDB) GetUserWithAuth(ctx context.Context, realm, id, passwor
 		return user, fmt.Errorf("in GetUserWithAuth function : %v", err)
 	}
 	if MatchVerification(user.VerificationMethod, password, user.VerificationHash) {
+		if !user.Active {
+			return nil, errors.New("in GetUserWithAuth function. User is not activated")
+		}
+		if !user.Enable {
+			return nil, errors.New("in GetUserWithAuth function. User is disabled")
+		}
 		return user, nil
 	}
 	return nil, fmt.Errorf("invalid authentication")
