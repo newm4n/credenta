@@ -1,6 +1,6 @@
-module github.com/newm4n/credenta
+module credenta
 
-go 1.23
+go 1.23.4
 
 require (
 	github.com/alexedwards/argon2id v1.0.0
