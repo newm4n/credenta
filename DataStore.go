@@ -13,18 +13,6 @@ const (
 	RoleMaskCount = 10
 )
 
-var (
-	credentaDB *CredentaDB
-)
-
-func init() {
-	cDB, err := NewCredentaDB(".", "/data/user", "/data/group", SimplePasswordPolicy())
-	if err != nil {
-		panic(err)
-	}
-	credentaDB = cDB
-}
-
 func SimplePasswordPolicy() *PassphrasePolicy {
 	return &PassphrasePolicy{
 		WordCount:               1,
@@ -47,9 +35,57 @@ func StrongPasswordPolicy() *PassphrasePolicy {
 	}
 }
 
-func NewCredentaDB(baseFolder, userFolder, groupFolder string, passphrasePolicy *PassphrasePolicy) (*CredentaDB, error) {
+func NewCredentaDB() (*CredentaDB, error) {
+
+	baseFolder := "."
+	userFolder := "/data/user"
+	groupFolder := "/data/group"
+	passphrasePolicy := &PassphrasePolicy{}
+	defaultRealm := "DEFAULT"
+
+	value, present := os.LookupEnv("CREDENTA_BASE_DIR")
+	if present {
+		baseFolder = value
+	} else {
+		fmt.Println("CREDENTA_BASE_DIR environment variable not set. Set to default value \".\".")
+	}
+
+	value, present = os.LookupEnv("CREDENTA_USER_DIR")
+	if present {
+		userFolder = value
+	} else {
+		fmt.Println("CREDENTA_USER_DIR environment variable not set. Set to default value \"/data/user\".")
+	}
+
+	value, present = os.LookupEnv("CREDENTA_GROUP_DIR")
+	if present {
+		groupFolder = value
+	} else {
+		fmt.Println("CREDENTA_GROUP_DIR environment variable not set. Set to default value \"/data/group\".")
+	}
+
+	value, present = os.LookupEnv("CREDENTA_PASS_POLICY")
+	if present {
+		switch value {
+		case "STRONG":
+			passphrasePolicy = StrongPasswordPolicy()
+		default:
+			passphrasePolicy = SimplePasswordPolicy()
+		}
+	} else {
+		fmt.Println("CREDENTA_PASS_POLICY environment variable not set. Set to default value \"SIMPLE\".")
+		passphrasePolicy = SimplePasswordPolicy()
+	}
+
+	value, present = os.LookupEnv("CREDENTA_REALM_DEFAULT")
+	if present {
+		defaultRealm = value
+	} else {
+		fmt.Println("CREDENTA_REALM_DEFAULT environment variable not set. Set to default value \"DEFAULT\".")
+	}
+
 	cDB := &CredentaDB{
-		DefaultRealm: "DEFAULT",
+		DefaultRealm: defaultRealm,
 		PassPolicy:   passphrasePolicy,
 		BaseFolder:   baseFolder,
 		UserFolder:   userFolder,
@@ -88,7 +124,7 @@ func (store *CredentaDB) GetRoleMasksOfGroups(ctx context.Context, realm, group 
 }
 
 func (store *CredentaDB) NewDefaultGroup(ctx context.Context, name string, parentGroup []string) (*CGroup, error) {
-	return store.NewGroup(ctx, credentaDB.DefaultRealm, name, parentGroup)
+	return store.NewGroup(ctx, store.DefaultRealm, name, parentGroup)
 }
 
 func (store *CredentaDB) NewGroup(ctx context.Context, realm, name string, parentGroup []string) (*CGroup, error) {
@@ -120,7 +156,7 @@ func (store *CredentaDB) NewGroup(ctx context.Context, realm, name string, paren
 }
 
 func (store *CredentaDB) NewDefaultUser(ctx context.Context, id, password string, groups []string, idType IdType, vMethod VerificationMethod) (*CUser, error) {
-	return store.NewUser(ctx, credentaDB.DefaultRealm, id, password, groups, idType, vMethod)
+	return store.NewUser(ctx, store.DefaultRealm, id, password, groups, idType, vMethod)
 }
 
 func (store *CredentaDB) NewUser(ctx context.Context, realm, id, password string, groups []string, idType IdType, vMethod VerificationMethod) (*CUser, error) {
@@ -231,7 +267,7 @@ func (store *CredentaDB) GetUserWithAuth(ctx context.Context, realm, id, passwor
 }
 
 /*
-ListUserIDsFiles will return a map of realm name to array of user id. The function will go to directory with format
+ListUserIDs will return a map of realm name to array of user id. The function will go to directory with format
 `BaseFolder/UserFolder` and look for file with `USERID_IN_REALM.json` name. It will return an error if no folder with
 that name is found. By default, the BaseFolder is "." which equals to the name of the project.
 */
@@ -247,7 +283,7 @@ func (store *CredentaDB) ListUserIDs(ctx context.Context) (map[string][]string, 
 }
 
 /*
-ListGroupDataFiles will return a map of realm name to array of group name. The function will go to directory with format
+ListGroupNames will return a map of realm name to array of group name. The function will go to directory with format
 `BaseFolder/GroupFolder` and look for file with `NAME_IN_REALM.json` name. It will return an error if no folder with
 that name is found. By default, the BaseFolder is "." which equals to the name of the project.
 */
