@@ -30,35 +30,54 @@ func strongPasswordPolicy() *PassphrasePolicy {
 		WordCount:               3,
 		LetterCountPerWord:      5,
 		LetterCountMinimumTotal: 12,
+		MustHaveUpperAlphabet:   false,
+		MustHaveNumeric:         false,
+		MustHaveSymbol:          false,
+	}
+}
+
+func classicPasswordPolicy() *PassphrasePolicy {
+	return &PassphrasePolicy{
+		WordCount:               1,
+		LetterCountPerWord:      8,
+		LetterCountMinimumTotal: 8,
 		MustHaveUpperAlphabet:   true,
 		MustHaveNumeric:         true,
 		MustHaveSymbol:          true,
 	}
 }
 
-func getEnvVar(varName string, defaultValue string) string {
+func getEnvVar(varName string, defaultValue string, options []string) string {
 	value, present := os.LookupEnv(varName)
 	if present {
 		return value
 	} else {
-		log.Printf("%s environment variable not set. Set to default value \"%s\".\n", varName, defaultValue)
+		if options == nil || len(options) == 0 {
+			log.Printf("%s environment variable not set. Set to default value \"%s\".\n", varName, defaultValue)
+		} else {
+			log.Printf("%s environment variable not set. Set to default value \"%s\". Options are %s.\n", varName, defaultValue, strings.Join(options, ","))
+		}
 		return defaultValue
 	}
 }
 
 func NewCredentaDB() (*CredentaDB, error) {
 
-	baseFolder := getEnvVar("CREDENTA_BASE_DIR", ".")
-	userFolder := getEnvVar("CREDENTA_USER_DIR", "/data/user")
-	groupFolder := getEnvVar("CREDENTA_GROUP_DIR", "/data/group")
-	defaultRealm := getEnvVar("CREDENTA_REALM_DEFAULT", "DEFAULT")
-	passPolicy := getEnvVar("CREDENTA_PASS_POLICY", "SIMPLE")
+	baseFolder := getEnvVar("CREDENTA_BASE_DIR", ".", nil)
+	userFolder := getEnvVar("CREDENTA_USER_DIR", "/data/user", nil)
+	groupFolder := getEnvVar("CREDENTA_GROUP_DIR", "/data/group", nil)
+	defaultRealm := getEnvVar("CREDENTA_REALM_DEFAULT", "DEFAULT", nil)
+	passPolicy := getEnvVar("CREDENTA_PASS_POLICY", "SIMPLE", []string{"SIMPLE", "STRONG", "CLASSIC"})
 
 	passphrasePolicy := &PassphrasePolicy{}
 
 	switch passPolicy {
 	case "STRONG":
 		passphrasePolicy = strongPasswordPolicy()
+	case "CLASSIC":
+		passphrasePolicy = classicPasswordPolicy()
+	case "SIMPLE":
+		passphrasePolicy = simplePasswordPolicy()
 	default:
 		passphrasePolicy = simplePasswordPolicy()
 	}
