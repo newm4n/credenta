@@ -16,9 +16,9 @@ import (
 type CGroup struct {
 	FilePath string `json:"-"`
 
-	Realm        string       `json:"realm" :"realm"`
-	Name         string       `json:"name" :"name"`
-	ParentGroups []string     `json:"parentGroups,omitempty" :"parentGroups"`
+	Realm        string       `json:"realm"`
+	Name         string       `json:"name"`
+	ParentGroups []string     `json:"parentGroups,omitempty"`
 	Attributes   []*Attribute `json:"attributes,omitempty"`
 	RoleMasks    []uint64     `json:"roleMasks,omitempty"`
 
@@ -31,6 +31,10 @@ type CGroup struct {
 func (group *CGroup) StoreOrSaveToFile(ctx context.Context) error {
 	group.UpdatedBy = ctx.Value(ETX_USER).(string)
 	group.UpdatedAt = time.Now()
+
+	/*
+		TODO Make sure that the group to parentGroup relation will not cause a cyclic relation. If it form a cyclic, it should return an error message
+	*/
 
 	data, err := json.Marshal(group)
 	if err != nil {
@@ -130,16 +134,16 @@ func (group *CGroup) ClearRole() {
 	}
 }
 
-func (grp *CGroup) GetAttributeList() []string {
-	names := make([]string, len(grp.Attributes))
-	for i, attr := range grp.SortAttributes() {
+func (group *CGroup) GetAttributeList() []string {
+	names := make([]string, len(group.Attributes))
+	for i, attr := range group.SortAttributes() {
 		names[i] = attr.Name
 	}
 	return names
 }
 
-func (grp *CGroup) HasAttribute(name string) bool {
-	for _, attr := range grp.Attributes {
+func (group *CGroup) HasAttribute(name string) bool {
+	for _, attr := range group.Attributes {
 		if strings.EqualFold(attr.Name, name) {
 			return true
 		}
@@ -147,23 +151,23 @@ func (grp *CGroup) HasAttribute(name string) bool {
 	return false
 }
 
-func (grp *CGroup) RemoveAttribute(name string) {
-	for i, attr := range grp.Attributes {
+func (group *CGroup) RemoveAttribute(name string) {
+	for i, attr := range group.Attributes {
 		if strings.EqualFold(attr.Name, name) {
-			grp.Attributes = append(grp.Attributes[:i], grp.Attributes[i+1:]...)
+			group.Attributes = append(group.Attributes[:i], group.Attributes[i+1:]...)
 		}
 	}
-	for i, attr := range grp.SortAttributes() {
+	for i, attr := range group.SortAttributes() {
 		attr.Seq = i
 	}
 }
 
-func (grp *CGroup) RemoveAllAttributes() {
-	grp.Attributes = grp.Attributes[:0]
+func (group *CGroup) RemoveAllAttributes() {
+	group.Attributes = group.Attributes[:0]
 }
 
-func (grp *CGroup) GetsAttribute(name string) (string, error) {
-	for _, attr := range grp.Attributes {
+func (group *CGroup) GetsAttribute(name string) (string, error) {
+	for _, attr := range group.Attributes {
 		if strings.EqualFold(attr.Name, name) {
 			return attr.StringValue, nil
 		}
@@ -171,16 +175,16 @@ func (grp *CGroup) GetsAttribute(name string) (string, error) {
 	return "", errors.New("attribute not found")
 }
 
-func (grp *CGroup) GetiAttribute(name string) (int, error) {
-	for _, attr := range grp.Attributes {
+func (group *CGroup) GetiAttribute(name string) (int, error) {
+	for _, attr := range group.Attributes {
 		if strings.EqualFold(attr.Name, name) {
 			return attr.IntegerValue, nil
 		}
 	}
 	return -1, errors.New("attribute not found")
 }
-func (grp *CGroup) GetfAttribute(name string) (float64, error) {
-	for _, attr := range grp.Attributes {
+func (group *CGroup) GetfAttribute(name string) (float64, error) {
+	for _, attr := range group.Attributes {
 		if strings.EqualFold(attr.Name, name) {
 			return attr.FloatValue, nil
 		}
@@ -188,8 +192,8 @@ func (grp *CGroup) GetfAttribute(name string) (float64, error) {
 	return -1, errors.New("attribute not found")
 }
 
-func (grp *CGroup) GetbAttribute(name string) (bool, error) {
-	for _, attr := range grp.Attributes {
+func (group *CGroup) GetbAttribute(name string) (bool, error) {
+	for _, attr := range group.Attributes {
 		if strings.EqualFold(attr.Name, name) {
 			return attr.BoolValue, nil
 		}
@@ -197,13 +201,13 @@ func (grp *CGroup) GetbAttribute(name string) (bool, error) {
 	return false, errors.New("attribute not found")
 }
 
-func (grp *CGroup) SetsAttribute(name, value string) error {
-	if grp.HasAttribute(name) {
+func (group *CGroup) SetsAttribute(name, value string) error {
+	if group.HasAttribute(name) {
 		return errors.New("attribute already exists")
 	}
-	grp.Attributes = append(grp.Attributes, &Attribute{
+	group.Attributes = append(group.Attributes, &Attribute{
 		Name:         name,
-		Seq:          len(grp.Attributes),
+		Seq:          len(group.Attributes),
 		StringValue:  value,
 		IntegerValue: 0,
 		FloatValue:   0,
@@ -212,15 +216,13 @@ func (grp *CGroup) SetsAttribute(name, value string) error {
 	return nil
 }
 
-func (grp *CGroup) SetiAttribute(name string, value int) error {
-	if grp.HasAttribute(name) {
-		fmt.Print("NOK")
+func (group *CGroup) SetiAttribute(name string, value int) error {
+	if group.HasAttribute(name) {
 		return errors.New("attribute already exists")
 	}
-	fmt.Print("OK")
-	grp.Attributes = append(grp.Attributes, &Attribute{
+	group.Attributes = append(group.Attributes, &Attribute{
 		Name:         name,
-		Seq:          len(grp.Attributes),
+		Seq:          len(group.Attributes),
 		StringValue:  "",
 		IntegerValue: value,
 		FloatValue:   0,
@@ -229,13 +231,13 @@ func (grp *CGroup) SetiAttribute(name string, value int) error {
 	return nil
 }
 
-func (grp *CGroup) SetfAttribute(name string, value float64) error {
-	if grp.HasAttribute(name) {
+func (group *CGroup) SetfAttribute(name string, value float64) error {
+	if group.HasAttribute(name) {
 		return errors.New("attribute already exists")
 	}
-	grp.Attributes = append(grp.Attributes, &Attribute{
+	group.Attributes = append(group.Attributes, &Attribute{
 		Name:         name,
-		Seq:          len(grp.Attributes),
+		Seq:          len(group.Attributes),
 		StringValue:  "",
 		IntegerValue: 0,
 		FloatValue:   value,
@@ -244,13 +246,13 @@ func (grp *CGroup) SetfAttribute(name string, value float64) error {
 	return nil
 }
 
-func (grp *CGroup) SetbAttribute(name string, value bool) error {
-	if grp.HasAttribute(name) {
+func (group *CGroup) SetbAttribute(name string, value bool) error {
+	if group.HasAttribute(name) {
 		return errors.New("attribute already exists")
 	}
-	grp.Attributes = append(grp.Attributes, &Attribute{
+	group.Attributes = append(group.Attributes, &Attribute{
 		Name:         name,
-		Seq:          len(grp.Attributes),
+		Seq:          len(group.Attributes),
 		StringValue:  "",
 		IntegerValue: 0,
 		FloatValue:   0,
@@ -259,8 +261,8 @@ func (grp *CGroup) SetbAttribute(name string, value bool) error {
 	return nil
 }
 
-func (grp *CGroup) SortAttributes() []*Attribute {
-	copy := grp.Attributes
+func (group *CGroup) SortAttributes() []*Attribute {
+	copy := group.Attributes
 	sort.Slice(copy, func(i, j int) bool {
 		return copy[i].Seq < copy[j].Seq
 	})

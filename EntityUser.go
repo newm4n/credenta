@@ -182,9 +182,7 @@ func (user *CUser) HasAttribute(name string) bool {
 	if user.Attributes == nil {
 		return false
 	}
-	fmt.Printf("Looking for %s in %d\n", name, len(user.Attributes))
 	for k, _ := range user.Attributes {
-		fmt.Printf("Found %s\n", k)
 		if strings.EqualFold(k, name) {
 			return true
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -13,7 +14,7 @@ const (
 	RoleMaskCount = 10
 )
 
-func SimplePasswordPolicy() *PassphrasePolicy {
+func simplePasswordPolicy() *PassphrasePolicy {
 	return &PassphrasePolicy{
 		WordCount:               1,
 		LetterCountPerWord:      8,
@@ -24,7 +25,7 @@ func SimplePasswordPolicy() *PassphrasePolicy {
 	}
 }
 
-func StrongPasswordPolicy() *PassphrasePolicy {
+func strongPasswordPolicy() *PassphrasePolicy {
 	return &PassphrasePolicy{
 		WordCount:               3,
 		LetterCountPerWord:      5,
@@ -35,31 +36,31 @@ func StrongPasswordPolicy() *PassphrasePolicy {
 	}
 }
 
-func GetEnvVar(varName string, defaultValue string) string {
+func getEnvVar(varName string, defaultValue string) string {
 	value, present := os.LookupEnv(varName)
 	if present {
 		return value
 	} else {
-		fmt.Printf("%s environment variable not set. Set to default value \"%s\".\n", varName, defaultValue)
+		log.Printf("%s environment variable not set. Set to default value \"%s\".\n", varName, defaultValue)
 		return defaultValue
 	}
 }
 
 func NewCredentaDB() (*CredentaDB, error) {
 
-	baseFolder := GetEnvVar("CREDENTA_BASE_DIR", ".")
-	userFolder := GetEnvVar("CREDENTA_USER_DIR", "/data/user")
-	groupFolder := GetEnvVar("CREDENTA_GROUP_DIR", "/data/group")
-	defaultRealm := GetEnvVar("CREDENTA_REALM_DEFAULT", "DEFAULT")
-	passPolicy := GetEnvVar("CREDENTA_PASS_POLICY", "SIMPLE")
+	baseFolder := getEnvVar("CREDENTA_BASE_DIR", ".")
+	userFolder := getEnvVar("CREDENTA_USER_DIR", "/data/user")
+	groupFolder := getEnvVar("CREDENTA_GROUP_DIR", "/data/group")
+	defaultRealm := getEnvVar("CREDENTA_REALM_DEFAULT", "DEFAULT")
+	passPolicy := getEnvVar("CREDENTA_PASS_POLICY", "SIMPLE")
 
 	passphrasePolicy := &PassphrasePolicy{}
 
 	switch passPolicy {
 	case "STRONG":
-		passphrasePolicy = StrongPasswordPolicy()
+		passphrasePolicy = strongPasswordPolicy()
 	default:
-		passphrasePolicy = SimplePasswordPolicy()
+		passphrasePolicy = simplePasswordPolicy()
 	}
 
 	cDB := &CredentaDB{
@@ -69,6 +70,15 @@ func NewCredentaDB() (*CredentaDB, error) {
 		UserFolder:   userFolder,
 		GroupFolder:  groupFolder,
 	}
+
+	if _, err := os.Stat(fmt.Sprintf("%s%s", baseFolder, userFolder)); err != nil {
+		return nil, fmt.Errorf("could not find user directory \"%s%s\". Please create the directory or change the environment variable CREDENTA_BASE_DIR and/or CREDENTA_USER_DIR and try again ", baseFolder, userFolder)
+	}
+
+	if _, err := os.Stat(fmt.Sprintf("%s%s", baseFolder, groupFolder)); err != nil {
+		return nil, fmt.Errorf("could not find user directory \"%s%s\". Please create the directory or change the environment variable CREDENTA_BASE_DIR and/or CREDENTA_GROUP_DIR and try again ", baseFolder, groupFolder)
+	}
+
 	return cDB, nil
 }
 
@@ -241,28 +251,39 @@ func (store *CredentaDB) GetUser(ctx context.Context, realm, id string) (*CUser,
 	return theUser, nil
 }
 
-func (store *CredentaDB) GetDefaultUserWithAuth(ctx context.Context, id, password string) (*CUser, error) {
+func (store *CredentaDB) GetDefaultUserWithAuth(ctx context.Context, id, password string) (*CUser, []uint64, error) {
 	return store.GetUserWithAuth(ctx, store.DefaultRealm, id, password)
 }
 
-func (store *CredentaDB) GetUserWithAuth(ctx context.Context, realm, id, password string) (*CUser, error) {
+func (store *CredentaDB) GetUserWithAuth(ctx context.Context, realm, id, password string) (*CUser, []uint64, error) {
 	if realm == "" || id == "" || password == "" {
-		return nil, errors.New("in GetUserWithAuth function. realm and id and password are required")
+		return nil, nil, errors.New("in GetUserWithAuth function. realm and id and password are required")
 	}
 	user, err := store.GetUser(ctx, realm, id)
 	if err != nil {
-		return user, fmt.Errorf("in GetUserWithAuth function : %v", err)
+		return nil, nil, fmt.Errorf("in GetUserWithAuth function : %v", err)
 	}
 	if MatchVerification(user.VerificationMethod, password, user.VerificationHash) {
 		if !user.Active {
-			return nil, errors.New("in GetUserWithAuth function. User is not activated")
+			return nil, nil, errors.New("in GetUserWithAuth function. User is not activated")
 		}
 		if !user.Enable {
-			return nil, errors.New("in GetUserWithAuth function. User is disabled")
+			return nil, nil, errors.New("in GetUserWithAuth function. User is disabled")
 		}
-		return user, nil
+		if user.Groups == nil || len(user.Groups) == 0 {
+			return user, user.RoleMasks, nil
+		} else {
+			ret := user.RoleMasks
+			for _, grp := range user.Groups {
+				grpRoleMask := store.GetRoleMasksOfGroups(ctx, realm, grp)
+				for i := 0; i < RoleMaskCount; i++ {
+					ret[i] = ret[i] | grpRoleMask[i]
+				}
+			}
+			return user, ret, nil
+		}
 	}
-	return nil, fmt.Errorf("invalid authentication")
+	return nil, nil, fmt.Errorf("invalid authentication")
 }
 
 /*
@@ -271,7 +292,7 @@ ListUserIDs will return a map of realm name to array of user id. The function wi
 that name is found. By default, the BaseFolder is "." which equals to the name of the project.
 */
 func (store *CredentaDB) ListUserIDs(ctx context.Context) (map[string][]string, error) {
-	if !PathExists(fmt.Sprintf("%s%s", store.BaseFolder, store.UserFolder)) {
+	if !pathExists(fmt.Sprintf("%s%s", store.BaseFolder, store.UserFolder)) {
 		return nil, fmt.Errorf("in ListUserDataFiles function, folder %s%s not exists", store.BaseFolder, store.UserFolder)
 	}
 	entries, err := os.ReadDir(fmt.Sprintf("%s%s", store.BaseFolder, store.UserFolder))
@@ -287,7 +308,7 @@ ListGroupNames will return a map of realm name to array of group name. The funct
 that name is found. By default, the BaseFolder is "." which equals to the name of the project.
 */
 func (store *CredentaDB) ListGroupNames(ctx context.Context) (map[string][]string, error) {
-	if !PathExists(fmt.Sprintf("%s%s", store.BaseFolder, store.GroupFolder)) {
+	if !pathExists(fmt.Sprintf("%s%s", store.BaseFolder, store.GroupFolder)) {
 		return nil, fmt.Errorf("in ListGroupDataFiles function, folder %s%s not exists", store.BaseFolder, store.GroupFolder)
 	}
 	entries, err := os.ReadDir(fmt.Sprintf("%s%s", store.BaseFolder, store.GroupFolder))
@@ -320,7 +341,7 @@ func (store *CredentaDB) listDataFiles(ctx context.Context, entries []os.DirEntr
 	return ret
 }
 
-func PathExists(path string) bool {
+func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
