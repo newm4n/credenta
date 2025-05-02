@@ -79,18 +79,13 @@ func TestCredentaDB_GetRoleMasksOfGroups(t *testing.T) {
 	assert.NoError(t, grandson.StoreOrSaveToFile(ctx))
 
 	roles := cDB.GetRoleMasksOfGroups(ctx, "RA", "GroupGrand")
-	assert.True(t, isRoleFlagOn(roles, 0))
-	assert.True(t, isRoleFlagOn(roles, 1))
-	assert.True(t, isRoleFlagOn(roles, 2))
-	assert.False(t, isRoleFlagOn(roles, 3))
+	assert.True(t, IsRoleFlagOn(roles, 0))
+	assert.True(t, IsRoleFlagOn(roles, 1))
+	assert.True(t, IsRoleFlagOn(roles, 2))
+	assert.False(t, IsRoleFlagOn(roles, 3))
 
 	assert.NoError(t, elder.DeleteFile(ctx))
 	assert.NoError(t, son.DeleteFile(ctx))
 	assert.NoError(t, grandson.DeleteFile(ctx))
 
-}
-
-func isRoleFlagOn(roles []uint64, roleSquence int) bool {
-	seq, bit := toUint64ByBit(roleSquence)
-	return isBitFlagOn(roles[seq], bit)
 }

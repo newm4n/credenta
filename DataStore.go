@@ -35,53 +35,31 @@ func StrongPasswordPolicy() *PassphrasePolicy {
 	}
 }
 
+func GetEnvVar(varName string, defaultValue string) string {
+	value, present := os.LookupEnv(varName)
+	if present {
+		return value
+	} else {
+		fmt.Printf("%s environment variable not set. Set to default value \"%s\".\n", varName, defaultValue)
+		return defaultValue
+	}
+}
+
 func NewCredentaDB() (*CredentaDB, error) {
 
-	baseFolder := "."
-	userFolder := "/data/user"
-	groupFolder := "/data/group"
+	baseFolder := GetEnvVar("CREDENTA_BASE_DIR", ".")
+	userFolder := GetEnvVar("CREDENTA_USER_DIR", "/data/user")
+	groupFolder := GetEnvVar("CREDENTA_GROUP_DIR", "/data/group")
+	defaultRealm := GetEnvVar("CREDENTA_REALM_DEFAULT", "DEFAULT")
+	passPolicy := GetEnvVar("CREDENTA_PASS_POLICY", "SIMPLE")
+
 	passphrasePolicy := &PassphrasePolicy{}
-	defaultRealm := "DEFAULT"
 
-	value, present := os.LookupEnv("CREDENTA_BASE_DIR")
-	if present {
-		baseFolder = value
-	} else {
-		fmt.Println("CREDENTA_BASE_DIR environment variable not set. Set to default value \".\".")
-	}
-
-	value, present = os.LookupEnv("CREDENTA_USER_DIR")
-	if present {
-		userFolder = value
-	} else {
-		fmt.Println("CREDENTA_USER_DIR environment variable not set. Set to default value \"/data/user\".")
-	}
-
-	value, present = os.LookupEnv("CREDENTA_GROUP_DIR")
-	if present {
-		groupFolder = value
-	} else {
-		fmt.Println("CREDENTA_GROUP_DIR environment variable not set. Set to default value \"/data/group\".")
-	}
-
-	value, present = os.LookupEnv("CREDENTA_PASS_POLICY")
-	if present {
-		switch value {
-		case "STRONG":
-			passphrasePolicy = StrongPasswordPolicy()
-		default:
-			passphrasePolicy = SimplePasswordPolicy()
-		}
-	} else {
-		fmt.Println("CREDENTA_PASS_POLICY environment variable not set. Set to default value \"SIMPLE\".")
+	switch passPolicy {
+	case "STRONG":
+		passphrasePolicy = StrongPasswordPolicy()
+	default:
 		passphrasePolicy = SimplePasswordPolicy()
-	}
-
-	value, present = os.LookupEnv("CREDENTA_REALM_DEFAULT")
-	if present {
-		defaultRealm = value
-	} else {
-		fmt.Println("CREDENTA_REALM_DEFAULT environment variable not set. Set to default value \"DEFAULT\".")
 	}
 
 	cDB := &CredentaDB{
@@ -153,6 +131,27 @@ func (store *CredentaDB) NewGroup(ctx context.Context, realm, name string, paren
 	}
 
 	return theGroup, nil
+}
+
+func (store *CredentaDB) ChangeUserPassword(ctx context.Context, realm, user, password string, vMethod VerificationMethod) error {
+	theUser, err := store.GetUser(ctx, realm, user)
+	if err != nil {
+		return err
+	}
+	valid, err := store.PassPolicy.IsPasswordValid(password)
+	if err != nil || !valid {
+		return fmt.Errorf("invalid password format")
+	}
+
+	hash, err := MakeVerification(vMethod, password)
+	if err != nil {
+		return err
+	}
+
+	theUser.VerificationHash = hash
+	theUser.VerificationMethod = vMethod
+
+	return nil
 }
 
 func (store *CredentaDB) NewDefaultUser(ctx context.Context, id, password string, groups []string, idType IdType, vMethod VerificationMethod) (*CUser, error) {
@@ -324,4 +323,9 @@ func (store *CredentaDB) listDataFiles(ctx context.Context, entries []os.DirEntr
 func PathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func IsRoleFlagOn(roles []uint64, roleSquence int) bool {
+	seq, bit := toUint64ByBit(roleSquence)
+	return isBitFlagOn(roles[seq], bit)
 }
