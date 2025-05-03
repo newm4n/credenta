@@ -3,6 +3,7 @@ module github.com/newm4n/credenta
 go 1.23.4
 
 require (
+	github.com/SermoDigital/jose v0.9.2-0.20180104203859-803625baeddc
 	github.com/alexedwards/argon2id v1.0.0
 	github.com/stretchr/testify v1.10.0
 )
@@ -14,3 +15,5 @@ require (
 	golang.org/x/sys v0.32.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+exclude github.com/SermoDigital/jose v0.9.1
