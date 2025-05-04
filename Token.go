@@ -72,18 +72,23 @@ GMoEuXHErktY7j5JAOYyAbo=
 
 type TokenType string
 
+// DefaultCertificate get the default x509 certificate based on the built in certificate PEM
 func DefaultCertificate() *x509.Certificate {
 	blk, _ := pem.Decode([]byte(DefaultCertificatePem))
 	certificate, _ := x509.ParseCertificate(blk.Bytes)
 	return certificate
 }
 
+// DefaultPrivateKey get the default RSA Private Key based on the built in PrivateKey PEM
 func DefaultPrivateKey() *rsa.PrivateKey {
 	blk, _ := pem.Decode([]byte(DefaultPrivateKeyPem))
 	privateKey, _ := x509.ParsePKCS8PrivateKey(blk.Bytes)
 	return privateKey.(*rsa.PrivateKey)
 }
 
+// LoadCertificateFromPEMFile get the x509 certificate  based on the PEM file specified on path at
+// certificatePEMFilePath argument. If something goes wrong, it will return the default certificate
+// as returned by DefaultCertificate function
 func LoadCertificateFromPEMFile(certificatePEMFilePath string) *x509.Certificate {
 	if strings.TrimSpace(certificatePEMFilePath) == "" {
 		return DefaultCertificate()
@@ -106,6 +111,9 @@ func LoadCertificateFromPEMFile(certificatePEMFilePath string) *x509.Certificate
 	return certificate
 }
 
+// LoadPrivateKeyFromPEMFile get the RSA PrivateKey  based on the PEM file specified on path at
+// privateKeyPEMFilePath argument. If something goes wrong, it will return the default RSA PrivateKey
+// as returned by DefaultPrivateKey function
 func LoadPrivateKeyFromPEMFile(privateKeyPEMFilePath string) *rsa.PrivateKey {
 	if strings.TrimSpace(privateKeyPEMFilePath) == "" {
 		return DefaultPrivateKey()
@@ -128,22 +136,29 @@ func LoadPrivateKeyFromPEMFile(privateKeyPEMFilePath string) *rsa.PrivateKey {
 	return privateKey.(*rsa.PrivateKey)
 }
 
-func RefreshToken(refreshToken string, accessTokenAge time.Duration, certificate *x509.Certificate, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (accessToken string, err error) {
-	issuer, subject, audiences, tokenType, additional, err := ReadToken(refreshToken, certificate, signMethod)
+// RefreshNewAccessToken will generate a new AccessToken based on the  supplied valid refresh token string in refreshToken argument.
+// The newly created access token will have an age of accessTokenAge starting of the time when this function is called.
+// The supplied RefreshToken will be validated using RSA Private key in privateKey argument and
+// the newly created AccessToken will be signed using x509 Certificate suplied in the certificate argument.
+func RefreshNewAccessToken(refreshToken string, accessTokenAge time.Duration, certificate *x509.Certificate, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (accessToken string, err error) {
+	issuer, subject, audiences, tokenType, additional, err := ReadJWTToken(refreshToken, certificate, signMethod)
 	if err != nil {
 		return "", err
 	}
 	if tokenType != RefreshTokenType {
 		return "", errors.New("refresh token does not match")
 	}
-	at, err := GenerateToken(issuer, subject, audiences, AccessTokenType, additional, time.Now(), time.Now(), time.Now().Add(accessTokenAge), privateKey, signMethod)
+	at, err := GenerateJWTToken(issuer, subject, audiences, AccessTokenType, additional, time.Now(), time.Now(), time.Now().Add(accessTokenAge), privateKey, signMethod)
 	if err != nil {
 		return "", err
 	}
 	return at, nil
 }
 
-func ReadToken(token string, certificate *x509.Certificate, signMethod *crypto.SigningMethodRSA) (issuer, subject string, audiences []string, tokenType TokenType, additional map[string]interface{}, err error) {
+// ReadJWTToken will read the supplied Token string suplied in the token argument.
+// It will return all information pertaining the token. such as issuer, subject, audiences, tokenType, etc.
+// If something wrong with the token, e.g. expired token or wrong certificate, it will return an error.
+func ReadJWTToken(token string, certificate *x509.Certificate, signMethod *crypto.SigningMethodRSA) (issuer, subject string, audiences []string, tokenType TokenType, additional map[string]interface{}, err error) {
 	jwt, err := jws.ParseJWT([]byte(token))
 	if err != nil {
 		return "", "", nil, "", nil, fmt.Errorf("malformed jwt token")
@@ -159,7 +174,8 @@ func ReadToken(token string, certificate *x509.Certificate, signMethod *crypto.S
 	for k, v := range claims {
 		kup := strings.ToUpper(k)
 		if kup == "TYP" {
-			ttype = v.(TokenType)
+			ttypes := v.(string)
+			ttype = TokenType(ttypes)
 		} else if kup != "ISS" && kup != "AUD" && kup != "SUB" && kup != "IAT" && kup != "EXP" && kup != "NBF" {
 			additional[k] = v
 		}
@@ -181,19 +197,28 @@ func ReadToken(token string, certificate *x509.Certificate, signMethod *crypto.S
 	return issuer, subject, audience, ttype, additional, nil
 }
 
-func GenerateTokenPair(issuer, subject string, audiences []string, additional map[string]interface{}, issuedAt time.Time, accessTokenAge, refreshTokenAge time.Duration, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (string, string, error) {
-	at, err := GenerateToken(issuer, subject, audiences, AccessTokenType, additional, issuedAt, time.Now(), time.Now().Add(accessTokenAge), privateKey, signMethod)
+// GenerateNewJWTTokenPair will create new pair of JWT Access and Refresh Token strings. these string is ready for the
+// web Authorization uses (AccessToken for access REST API, and RefreshToken for refreshing the access token if the
+// access is expired).
+// Both token will have the same informations such as, issuer, subject, audience, additional, etc.
+// But they have different Age.
+// Both token will be signed using the same privateKey.
+func GenerateNewJWTTokenPair(issuer, subject string, audiences []string, additional map[string]interface{}, issuedAt time.Time, accessTokenAge, refreshTokenAge time.Duration, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (string, string, error) {
+	at, err := GenerateJWTToken(issuer, subject, audiences, AccessTokenType, additional, issuedAt, issuedAt, issuedAt.Add(accessTokenAge), privateKey, signMethod)
 	if err != nil {
 		return "", "", err
 	}
-	ar, err := GenerateToken(issuer, subject, audiences, RefreshTokenType, additional, issuedAt, time.Now(), time.Now().Add(refreshTokenAge), privateKey, signMethod)
+	ar, err := GenerateJWTToken(issuer, subject, audiences, RefreshTokenType, additional, issuedAt, issuedAt, issuedAt.Add(refreshTokenAge), privateKey, signMethod)
 	if err != nil {
 		return "", "", err
 	}
 	return at, ar, nil
 }
 
-func GenerateToken(issuer, subject string, audiences []string, tokenType TokenType, additional map[string]interface{}, issuedAt, notBefore, expireAt time.Time, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (string, error) {
+// GenerateJWTToken will create a new JWT Token based on th supplied tokenType argument.
+// It will have information pertaining the new Token such as issuer, subject, audiences, additionals, etc.
+// The generated token will be signed using the supplied privateKey
+func GenerateJWTToken(issuer, subject string, audiences []string, tokenType TokenType, additional map[string]interface{}, issuedAt, notBefore, expireAt time.Time, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (string, error) {
 	claims := jws.Claims{}
 	claims.SetIssuer(issuer)
 	claims.SetSubject(subject)

@@ -12,16 +12,26 @@ import (
 )
 
 const (
-	VerificationMethodPLAIN  VerificationMethod = "PLAIN"
-	VerificationMethodMD5    VerificationMethod = "MD5"
-	VerificationMethodSHA1   VerificationMethod = "SHA1"
+	// VerificationMethodPLAIN specifies if a password will be saved as it is, no change. Password will be seen and
+	// recovered by the reader.
+	VerificationMethodPLAIN VerificationMethod = "PLAIN"
+	// VerificationMethodMD5 specifies if a password will be hashed using MD5 and this hash will be stored.
+	VerificationMethodMD5 VerificationMethod = "MD5"
+	// VerificationMethodSHA1 specifies if a password will be hashed using SHA1 and this hash will be stored.
+	VerificationMethodSHA1 VerificationMethod = "SHA1"
+	// VerificationMethodSHA256 specifies if a password will be hashed using SHA256 and this hash will be stored.
 	VerificationMethodSHA256 VerificationMethod = "SHA256"
+	// VerificationMethodSHA512 specifies if a password will be hashed using SHA512 and this hash will be stored.
 	VerificationMethodSHA512 VerificationMethod = "SHA512"
-	VerificationMethodARGON  VerificationMethod = "ARGON"
+	// VerificationMethodARGON specifies if a password will be hashed using ARGON and this hash will be stored.
+	// ARGON is the current award wining hashing mechanism and once saved the password is NOT RECOVERABLE
+	VerificationMethodARGON VerificationMethod = "ARGON"
 )
 
+// VerificationMethod specify on how a user's password were stored.
 type VerificationMethod string
 
+// MakeVerification will hash the supplied pass argument using the hashing mechanism.
 func MakeVerification(method VerificationMethod, pass string) (string, error) {
 	switch method {
 	case VerificationMethodPLAIN:
@@ -41,6 +51,8 @@ func MakeVerification(method VerificationMethod, pass string) (string, error) {
 	}
 }
 
+// MatchVerification will return true if the hash of password match to the hashed password, depends on the hasing method
+// used when creating the password hash on the first place (MakeVerification)
 func MatchVerification(method VerificationMethod, pass, hash string) bool {
 	switch method {
 	case VerificationMethodPLAIN:

@@ -14,39 +14,6 @@ const (
 	RoleMaskCount = 10
 )
 
-func simplePasswordPolicy() *PassphrasePolicy {
-	return &PassphrasePolicy{
-		WordCount:               1,
-		LetterCountPerWord:      8,
-		LetterCountMinimumTotal: 8,
-		MustHaveUpperAlphabet:   false,
-		MustHaveNumeric:         false,
-		MustHaveSymbol:          false,
-	}
-}
-
-func strongPasswordPolicy() *PassphrasePolicy {
-	return &PassphrasePolicy{
-		WordCount:               3,
-		LetterCountPerWord:      5,
-		LetterCountMinimumTotal: 12,
-		MustHaveUpperAlphabet:   false,
-		MustHaveNumeric:         false,
-		MustHaveSymbol:          false,
-	}
-}
-
-func classicPasswordPolicy() *PassphrasePolicy {
-	return &PassphrasePolicy{
-		WordCount:               1,
-		LetterCountPerWord:      8,
-		LetterCountMinimumTotal: 8,
-		MustHaveUpperAlphabet:   true,
-		MustHaveNumeric:         true,
-		MustHaveSymbol:          true,
-	}
-}
-
 func getEnvVar(varName string, defaultValue string, options []string) string {
 	value, present := os.LookupEnv(varName)
 	if present {
@@ -73,13 +40,13 @@ func NewCredentaDB() (*CredentaDB, error) {
 
 	switch passPolicy {
 	case "STRONG":
-		passphrasePolicy = strongPasswordPolicy()
+		passphrasePolicy = StrongPasswordPolicy()
 	case "CLASSIC":
-		passphrasePolicy = classicPasswordPolicy()
+		passphrasePolicy = ClassicPasswordPolicy()
 	case "SIMPLE":
-		passphrasePolicy = simplePasswordPolicy()
+		passphrasePolicy = SimplePasswordPolicy()
 	default:
-		passphrasePolicy = simplePasswordPolicy()
+		passphrasePolicy = SimplePasswordPolicy()
 	}
 
 	cDB := &CredentaDB{

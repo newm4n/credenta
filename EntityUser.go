@@ -13,11 +13,17 @@ import (
 )
 
 const (
-	IdTypeUserId      IdType = "USERID"
-	IdTypeUserEmail   IdType = "EMAIL"
+	// IdTypeUserId a simple user ID.
+	IdTypeUserId IdType = "USERID"
+	// IdTypeUserEmail an ID from email address
+	IdTypeUserEmail IdType = "EMAIL"
+	// IdTypeUserPhoneNo an ID from a phone number
 	IdTypeUserPhoneNo IdType = "PHONENO"
 )
 
+// IdType specify the type of Identification.
+// this is useful to know if some kind of validation is required for the system for user.
+// validation such as email box ownership or phone number ownership.
 type IdType string
 
 type CUser struct {
