@@ -2,7 +2,7 @@
 
 ## About
 
-A simple library created using Golang programming language.
+A simple library for storing user/group credential management. Created using Golang programming language.
 
 ## Vision n Mission
 
@@ -28,6 +28,32 @@ git add github.com/newm4n/credenta
 
 # JWT Token
 
+This library also help you to work with JWT. It uses `github.com/SermoDigital/jose` to work
+sith JWT. You will need to have `openssl` tooling to create RSA private and public key
+to generate the required keys so your JWT will be secured.
+
+## A note for JOSE library
+
+To add JOSE, you have to maksure JOSE is in your `go.mod` as follows.
+
+```text
+require (
+	github.com/SermoDigital/jose v0.9.2-0.20180104203859-803625baeddc
+	...
+}
+
+exclude github.com/SermoDigital/jose v0.9.1
+```
+
+first, you call the following command to add JOSE
+
+```shell
+$ go get github.com/SermoDigital/jose
+$ go get github.com/SermoDigital/jose@v0.9.2-0.20180104203859-803625baeddc
+```
+
+And the, you can edit your `go.mod` file like the above.
+
 ## How to work with JWT Token
 
 1. Create your private key
@@ -36,13 +62,57 @@ git add github.com/newm4n/credenta
 ### 1. Create your private key
 
 ```shell
-openssl genrsa -out sample_key.priv 2048
+$ openssl genrsa -out sample_key.priv 2048
+```
+
+To load the saved keys, 
+
+```go
+import (
+    "github.com/newm4n/credenta"
+)
+
+privateKey := credenta.LoadPrivateKeyFromFile("path/to/sample_key.priv")
+```
+
+You may notice that `LoadPrivateKeyFromFile` function does not return an `error`
+instance. Its because the function will automatically return default PrivateKey if
+it founds an error. Bellow shows function that create a default Private key.
+
+```go
+import (
+    "github.com/newm4n/credenta"
+)
+
+privateKey := credenta.GetDefaultPrivateKey()
 ```
 
 ### 2. Create public key from your private key
 
 ```shell
-openssl rsa -in sample_key.priv -pubout > sample_key.pub
+$ openssl rsa -in sample_key.priv -pubout > sample_key.pub
+```
+
+To load the saved keys,
+
+```go
+import (
+    "github.com/newm4n/credenta"
+)
+
+publicKey := credenta.LoadPublicKeyFromFile("path/to/sample_key.pub")
+```
+
+You may notice that `LoadPublicKeyFromFile` function does not return an `error`
+instance. Its because the function will automatically return default PublicKey if
+it founds an error. Bellow shows function that create a default Public key.
+
+```go
+import (
+    "github.com/newm4n/credenta"
+)
+
+publicKey := credenta.GetDefaultPublicKey()
 ```
 
 ### 3. Create JWT Token
