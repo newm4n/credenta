@@ -60,6 +60,7 @@ func TestToken_JWTWithOriginalKey(t *testing.T) {
 }
 
 func TestToken_GenerateTokenPair(t *testing.T) {
+	realm := "TheRealm"
 	issuer := "TheIssuer"
 	subject := "TheSubject"
 	audience := []string{"audience1", "audience2"}
@@ -69,19 +70,20 @@ func TestToken_GenerateTokenPair(t *testing.T) {
 	refreshTokenAge := time.Hour * 24 * 30
 	privateKey := GetDefaultPrivateKey()
 	signMethod := crypto.SigningMethodRS256
-	at, rt, err := GenerateNewJWTTokenPair(issuer, subject, audience, additional, issuedAt, accessTokenAge, refreshTokenAge, privateKey, signMethod)
+	at, rt, err := GenerateNewJWTTokenPair(realm, issuer, subject, audience, additional, issuedAt, accessTokenAge, refreshTokenAge, privateKey, signMethod)
 	assert.NoError(t, err)
 
-	at, err = GenerateJWTToken(issuer, subject, audience, AccessTokenType, additional, issuedAt, issuedAt, issuedAt.Add(accessTokenAge), privateKey, signMethod)
+	at, err = GenerateJWTToken(realm, issuer, subject, audience, AccessTokenType, additional, issuedAt, issuedAt, issuedAt.Add(accessTokenAge), privateKey, signMethod)
 
 	t.Log(at)
 	t.Log(rt)
 
 	publicKey := GetDefaultPublicKey()
 
-	aissuer2, subject2, audience2, tokenType2, additional2, err := ReadJWTToken(at, publicKey, signMethod)
+	realm2, aissuer2, subject2, audience2, tokenType2, additional2, err := ReadJWTToken(at, publicKey, signMethod)
 	assert.NoError(t, err)
 
+	assert.Equal(t, realm, realm2)
 	assert.Equal(t, issuer, aissuer2)
 	assert.Equal(t, subject, subject2)
 	assert.Equal(t, audience, audience2)
@@ -90,6 +92,7 @@ func TestToken_GenerateTokenPair(t *testing.T) {
 }
 
 func TestToken_ExpireTokenRead(t *testing.T) {
+	realm := "TheRealm"
 	issuer := "TheIssuer"
 	subject := "TheSubject"
 	audience := []string{"audience1", "audience2"}
@@ -98,11 +101,11 @@ func TestToken_ExpireTokenRead(t *testing.T) {
 	accessTokenAge := time.Minute * 5
 	privateKey := GetDefaultPrivateKey()
 	signMethod := crypto.SigningMethodRS256
-	at, err := GenerateJWTToken(issuer, subject, audience, AccessTokenType, additional, issuedAt, issuedAt, issuedAt.Add(accessTokenAge), privateKey, signMethod)
+	at, err := GenerateJWTToken(realm, issuer, subject, audience, AccessTokenType, additional, issuedAt, issuedAt, issuedAt.Add(accessTokenAge), privateKey, signMethod)
 	assert.NoError(t, err)
 
 	publicKey := GetDefaultPublicKey()
-	_, _, _, _, _, err = ReadJWTToken(at, publicKey, signMethod)
+	_, _, _, _, _, _, err = ReadJWTToken(at, publicKey, signMethod)
 	assert.Error(t, err)
 	log.Println(err.Error())
 }
