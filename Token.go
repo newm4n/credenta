@@ -61,7 +61,7 @@ type TokenType string
 func GetDefaultPrivateKey() *rsa.PrivateKey {
 	rPriv, err := crypto.ParseRSAPrivateKeyFromPEM([]byte(defaultPrivateKey))
 	if err != nil {
-		return nil
+		panic(err.Error())
 	}
 	return rPriv
 }
@@ -70,7 +70,7 @@ func GetDefaultPrivateKey() *rsa.PrivateKey {
 func GetDefaultPublicKey() *rsa.PublicKey {
 	rPub, err := crypto.ParseRSAPublicKeyFromPEM([]byte(defaultPublicKey))
 	if err != nil {
-		return nil
+		panic(err.Error())
 	}
 	return rPub
 }
@@ -78,43 +78,43 @@ func GetDefaultPublicKey() *rsa.PublicKey {
 // LoadPublicKeyFromFile get the RSA PublicKey  based on the PEM file specified on path at
 // publicKeyPath argument. If something goes wrong, it will return the default RSA PublicKey
 // as returned by GetDefaultPublicKey function
-func LoadPublicKeyFromFile(publicKeyPath string) *rsa.PublicKey {
+func LoadPublicKeyFromFile(publicKeyPath string) (*rsa.PublicKey, error) {
 	if strings.TrimSpace(publicKeyPath) == "" {
-		return GetDefaultPublicKey()
+		return GetDefaultPublicKey(), fmt.Errorf("public key file path is empty")
 	}
 	if _, err := os.Stat(publicKeyPath); err != nil {
-		return GetDefaultPublicKey()
+		return GetDefaultPublicKey(), fmt.Errorf("public key file not found")
 	}
 	publicKeyContent, err := os.ReadFile(publicKeyPath)
 	if err != nil {
-		return GetDefaultPublicKey()
+		return GetDefaultPublicKey(), fmt.Errorf("public key file can not be read : %w", err)
 	}
 	rPub, err := crypto.ParseRSAPublicKeyFromPEM(publicKeyContent)
 	if err != nil {
-		return GetDefaultPublicKey()
+		return GetDefaultPublicKey(), fmt.Errorf("can not process public key : %w", err)
 	}
-	return rPub
+	return rPub, nil
 }
 
 // LoadPrivateKeyFromFile get the RSA PrivateKey  based on the file specified on path at
 // privateKeyPEMFilePath argument. If something goes wrong, it will return the default RSA PrivateKey
 // as returned by GetDefaultPrivateKey function
-func LoadPrivateKeyFromFile(privateKeyFilePath string) *rsa.PrivateKey {
+func LoadPrivateKeyFromFile(privateKeyFilePath string) (*rsa.PrivateKey, error) {
 	if strings.TrimSpace(privateKeyFilePath) == "" {
-		return GetDefaultPrivateKey()
+		return GetDefaultPrivateKey(), fmt.Errorf("private key file path is empty")
 	}
 	if _, err := os.Stat(privateKeyFilePath); err != nil {
-		return GetDefaultPrivateKey()
+		return GetDefaultPrivateKey(), fmt.Errorf("private key file not found")
 	}
 	privateKeyContent, err := os.ReadFile(privateKeyFilePath)
 	if err != nil {
-		return GetDefaultPrivateKey()
+		return GetDefaultPrivateKey(), fmt.Errorf("private key file can not be read : %w", err)
 	}
 	rPriv, err := crypto.ParseRSAPrivateKeyFromPEM(privateKeyContent)
 	if err != nil {
-		return GetDefaultPrivateKey()
+		return GetDefaultPrivateKey(), fmt.Errorf("can not process private key : %w", err)
 	}
-	return rPriv
+	return rPriv, nil
 }
 
 // RefreshNewAccessToken will generate a new AccessToken based on the  supplied valid refresh token string in refreshToken argument.
@@ -122,14 +122,14 @@ func LoadPrivateKeyFromFile(privateKeyFilePath string) *rsa.PrivateKey {
 // The supplied RefreshToken will be validated using RSA Private key in privateKey argument and
 // the newly created AccessToken will be signed using x509 Certificate suplied in the certificate argument.
 func RefreshNewAccessToken(refreshToken string, accessTokenAge time.Duration, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (accessToken string, err error) {
-	issuer, subject, audiences, tokenType, additional, err := ReadJWTToken(refreshToken, publicKey, signMethod)
+	realm, issuer, subject, audiences, tokenType, additional, err := ReadJWTToken(refreshToken, publicKey, signMethod)
 	if err != nil {
 		return "", err
 	}
 	if tokenType != RefreshTokenType {
 		return "", errors.New("refresh token does not match")
 	}
-	at, err := GenerateJWTToken(issuer, subject, audiences, AccessTokenType, additional, time.Now(), time.Now(), time.Now().Add(accessTokenAge), privateKey, signMethod)
+	at, err := GenerateJWTToken(realm, issuer, subject, audiences, AccessTokenType, additional, time.Now(), time.Now(), time.Now().Add(accessTokenAge), privateKey, signMethod)
 	if err != nil {
 		return "", err
 	}
@@ -139,17 +139,18 @@ func RefreshNewAccessToken(refreshToken string, accessTokenAge time.Duration, pu
 // ReadJWTToken will read the supplied Token string suplied in the token argument.
 // It will return all information pertaining the token. such as issuer, subject, audiences, tokenType, etc.
 // If something wrong with the token, e.g. expired token or wrong certificate, it will return an error.
-func ReadJWTToken(token string, publicKey *rsa.PublicKey, signMethod *crypto.SigningMethodRSA) (issuer, subject string, audiences []string, tokenType TokenType, additional map[string]interface{}, err error) {
+func ReadJWTToken(token string, publicKey *rsa.PublicKey, signMethod *crypto.SigningMethodRSA) (realm, issuer, subject string, audiences []string, tokenType TokenType, additional map[string]interface{}, err error) {
 	jwt, err := jws.ParseJWT([]byte(token))
 	if err != nil {
-		return "", "", nil, "", nil, fmt.Errorf("malformed jwt token")
+		return "", "", "", nil, "", nil, fmt.Errorf("malformed jwt token")
 	}
 
 	if err := jwt.Validate(publicKey, signMethod); err != nil {
-		return "", "", nil, "", nil, err
+		return "", "", "", nil, "", nil, err
 	}
 
 	var ttype TokenType
+	realm = ""
 	claims := jwt.Claims()
 	additional = make(map[string]interface{})
 	for k, v := range claims {
@@ -157,6 +158,8 @@ func ReadJWTToken(token string, publicKey *rsa.PublicKey, signMethod *crypto.Sig
 		if kup == "TYP" {
 			ttypes := v.(string)
 			ttype = TokenType(ttypes)
+		} else if kup == "REA" {
+			realm = v.(string)
 		} else if kup != "ISS" && kup != "AUD" && kup != "SUB" && kup != "IAT" && kup != "EXP" && kup != "NBF" {
 			additional[k] = v
 		}
@@ -175,7 +178,7 @@ func ReadJWTToken(token string, publicKey *rsa.PublicKey, signMethod *crypto.Sig
 		audience = aud
 	}
 
-	return issuer, subject, audience, ttype, additional, nil
+	return realm, issuer, subject, audience, ttype, additional, nil
 }
 
 // GenerateNewJWTTokenPair will create new pair of JWT Access and Refresh Token strings. these string is ready for the
@@ -184,12 +187,12 @@ func ReadJWTToken(token string, publicKey *rsa.PublicKey, signMethod *crypto.Sig
 // Both token will have the same informations such as, issuer, subject, audience, additional, etc.
 // But they have different Age.
 // Both token will be signed using the same privateKey.
-func GenerateNewJWTTokenPair(issuer, subject string, audiences []string, additional map[string]interface{}, issuedAt time.Time, accessTokenAge, refreshTokenAge time.Duration, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (string, string, error) {
-	at, err := GenerateJWTToken(issuer, subject, audiences, AccessTokenType, additional, issuedAt, issuedAt, issuedAt.Add(accessTokenAge), privateKey, signMethod)
+func GenerateNewJWTTokenPair(realm, issuer, subject string, audiences []string, additional map[string]interface{}, issuedAt time.Time, accessTokenAge, refreshTokenAge time.Duration, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (string, string, error) {
+	at, err := GenerateJWTToken(realm, issuer, subject, audiences, AccessTokenType, additional, issuedAt, issuedAt, issuedAt.Add(accessTokenAge), privateKey, signMethod)
 	if err != nil {
 		return "", "", err
 	}
-	ar, err := GenerateJWTToken(issuer, subject, audiences, RefreshTokenType, additional, issuedAt, issuedAt, issuedAt.Add(refreshTokenAge), privateKey, signMethod)
+	ar, err := GenerateJWTToken(realm, issuer, subject, audiences, RefreshTokenType, additional, issuedAt, issuedAt, issuedAt.Add(refreshTokenAge), privateKey, signMethod)
 	if err != nil {
 		return "", "", err
 	}
@@ -199,7 +202,7 @@ func GenerateNewJWTTokenPair(issuer, subject string, audiences []string, additio
 // GenerateJWTToken will create a new JWT Token based on th supplied tokenType argument.
 // It will have information pertaining the new Token such as issuer, subject, audiences, additionals, etc.
 // The generated token will be signed using the supplied privateKey
-func GenerateJWTToken(issuer, subject string, audiences []string, tokenType TokenType, additional map[string]interface{}, issuedAt, notBefore, expireAt time.Time, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (string, error) {
+func GenerateJWTToken(realm, issuer, subject string, audiences []string, tokenType TokenType, additional map[string]interface{}, issuedAt, notBefore, expireAt time.Time, privateKey *rsa.PrivateKey, signMethod *crypto.SigningMethodRSA) (string, error) {
 	claims := jws.Claims{}
 	claims.SetIssuer(issuer)
 	claims.SetSubject(subject)
@@ -208,6 +211,7 @@ func GenerateJWTToken(issuer, subject string, audiences []string, tokenType Toke
 	claims.SetNotBefore(notBefore)
 	claims.SetExpiration(expireAt)
 	claims["typ"] = tokenType
+	claims["rea"] = realm
 	if additional != nil {
 		for k, v := range additional {
 			claims[k] = v
