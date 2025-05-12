@@ -22,11 +22,11 @@ func TestCredentaDB_GetUser(t *testing.T) {
 	u.AddRole(1)
 	u.AddRole(64)
 
-	assert.NoError(t, u.SetsAttribute("ATTRA", "AttributeA"))
+	assert.NoError(t, u.SetAttribute("ATTRA", "string", "AttributeA"))
 	assert.True(t, u.HasAttribute("ATTRA"))
-	assert.NoError(t, u.SetiAttribute("ATTRB", 123))
+	assert.NoError(t, u.SetAttribute("ATTRB", "int", "123"))
 	assert.True(t, u.HasAttribute("ATTRB"))
-	assert.NoError(t, u.SetiAttribute("ATTRC", 123))
+	assert.NoError(t, u.SetAttribute("ATTRC", "int", "123"))
 	assert.True(t, u.HasAttribute("ATTRC"))
 
 	t.Log("------------")

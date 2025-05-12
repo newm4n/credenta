@@ -5,10 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -158,19 +158,13 @@ func (user *CUser) ClearRole() {
 	}
 }
 
-func (user *CUser) SortAttributes() []*Attribute {
+func (user *CUser) SortAttributeKeys() []string {
 	if user.Attributes == nil {
-		return make([]*Attribute, 0)
+		return make([]string, 0)
 	}
-	copyAttribute := make([]*Attribute, len(user.Attributes))
-	i := 0
-	for k := range user.Attributes {
-		copyAttribute[i] = user.Attributes[k]
-	}
-	sort.Slice(copyAttribute, func(i, j int) bool {
-		return copyAttribute[i].Seq < copyAttribute[j].Seq
-	})
-	return copyAttribute
+	attnames := user.GetAttributeList()
+	sort.Strings(attnames)
+	return attnames
 }
 
 func (user *CUser) GetAttributeList() []string {
@@ -178,9 +172,9 @@ func (user *CUser) GetAttributeList() []string {
 		return make([]string, 0)
 	}
 
-	names := make([]string, len(user.Attributes))
-	for i, attr := range user.SortAttributes() {
-		names[i] = attr.Name
+	names := make([]string, 0)
+	for k, _ := range user.Attributes {
+		names = append(names, k)
 	}
 	return names
 }
@@ -188,134 +182,41 @@ func (user *CUser) HasAttribute(name string) bool {
 	if user.Attributes == nil {
 		return false
 	}
-	for k, _ := range user.Attributes {
-		if strings.EqualFold(k, name) {
-			return true
-		}
-	}
-	return false
+	_, exist := user.Attributes[name]
+	return exist
 }
 func (user *CUser) RemoveAttribute(name string) {
 	if user.Attributes != nil {
-		for key, _ := range user.Attributes {
-			if strings.EqualFold(key, name) {
-				delete(user.Attributes, key)
-			}
-		}
-		for i, attr := range user.SortAttributes() {
-			attr.Seq = i
-		}
+		delete(user.Attributes, name)
 	}
 }
 func (user *CUser) RemoveAllAttributes() {
 	user.Attributes = make(map[string]*Attribute)
 }
-func (user *CUser) GetsAttribute(name string) (string, error) {
+
+// GetAttribute retrieve value of attribute with specified name, or error if problem during retrieval.
+func (user *CUser) GetAttribute(name string) (valueType, valueString string, err error) {
 	if user.Attributes != nil {
-		for _, attr := range user.Attributes {
-			if strings.EqualFold(attr.Name, name) {
-				return attr.StringValue, nil
-			}
+		if attrib, exist := user.Attributes[name]; exist {
+			return attrib.ValueType, attrib.ValueString, nil
 		}
 	}
-	return "", fmt.Errorf("attribute not found")
-}
-func (user *CUser) GetiAttribute(name string) (int, error) {
-	if user.Attributes != nil {
-		for _, attr := range user.Attributes {
-			if strings.EqualFold(attr.Name, name) {
-				return attr.IntegerValue, nil
-			}
-		}
-	}
-	return -1, fmt.Errorf("attribute not found")
-}
-func (user *CUser) GetfAttribute(name string) (float64, error) {
-	if user.Attributes != nil {
-		for _, attr := range user.Attributes {
-			if strings.EqualFold(attr.Name, name) {
-				return attr.FloatValue, nil
-			}
-		}
-	}
-	return -1, fmt.Errorf("attribute not found")
-}
-func (user *CUser) GetbAttribute(name string) (bool, error) {
-	if user.Attributes != nil {
-		for _, attr := range user.Attributes {
-			if strings.EqualFold(attr.Name, name) {
-				return attr.BoolValue, nil
-			}
-		}
-	}
-	return false, fmt.Errorf("attribute not found")
+	return "", "", errors.New("attribute not found")
 }
 
-func (user *CUser) SetsAttribute(name, value string) error {
+// SetAttribute set value attribute with specified name, type and the value in a string representation.
+// return error if problem during storing.
+func (user *CUser) SetAttribute(attributeName, valueType, valueString string) error {
 	if user.Attributes == nil {
 		user.Attributes = make(map[string]*Attribute)
 	}
-	if user.HasAttribute(name) {
-		return fmt.Errorf("attribute already exists")
-	}
-	user.Attributes[name] = &Attribute{
-		Name:         name,
-		Seq:          len(user.Attributes),
-		StringValue:  value,
-		IntegerValue: 0,
-		FloatValue:   0,
-		BoolValue:    false,
-	}
-	return nil
-}
-func (user *CUser) SetiAttribute(name string, value int) error {
-	if user.Attributes == nil {
-		user.Attributes = make(map[string]*Attribute)
-	}
-	if user.HasAttribute(name) {
-		return fmt.Errorf("attribute already exists")
-	}
-	user.Attributes[name] = &Attribute{
-		Name:         name,
-		Seq:          len(user.Attributes),
-		StringValue:  "",
-		IntegerValue: value,
-		FloatValue:   0,
-		BoolValue:    false,
-	}
-	return nil
-}
-func (user *CUser) SetfAttribute(name string, value float64) error {
-	if user.Attributes == nil {
-		user.Attributes = make(map[string]*Attribute)
-	}
-	if user.HasAttribute(name) {
-		return fmt.Errorf("attribute already exists")
-	}
-	user.Attributes[name] = &Attribute{
-		Name:         name,
-		Seq:          len(user.Attributes),
-		StringValue:  "",
-		IntegerValue: 0,
-		FloatValue:   value,
-		BoolValue:    false,
-	}
-	return nil
-}
-func (user *CUser) SetbAttribute(name string, value bool) error {
-	if user.Attributes == nil {
-		user.Attributes = make(map[string]*Attribute)
-	}
-	if user.HasAttribute(name) {
-		return fmt.Errorf("attribute already exists")
-	}
-	user.Attributes[name] = &Attribute{
-		Name:         name,
-		Seq:          len(user.Attributes),
-		StringValue:  "",
-		IntegerValue: 0,
-		FloatValue:   0,
-		BoolValue:    value,
+	if _, exist := user.Attributes[attributeName]; !exist {
+		user.Attributes[attributeName] = &Attribute{
+			Name:        attributeName,
+			Seq:         len(user.Attributes),
+			ValueType:   valueType,
+			ValueString: valueString,
+		}
 	}
 	return nil
 }

@@ -12,11 +12,8 @@ func TestGroup(t *testing.T) {
 		Attributes:   []*Attribute{},
 	}
 
-	assert.NoError(t, g.SetiAttribute("G1N1", 1))
-	assert.Error(t, g.SetiAttribute("G1N1", 2))
-
-	assert.NoError(t, g.SetsAttribute("G1S1", "One"))
-	assert.Error(t, g.SetsAttribute("G1S1", "Two"))
+	assert.NoError(t, g.SetAttribute("G1N1", "int", "1"))
+	assert.Error(t, g.SetAttribute("G1N1", "int", "2"))
 
 	//fmt.Println(g.GetAttributeList())
 }

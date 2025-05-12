@@ -166,97 +166,32 @@ func (group *CGroup) RemoveAllAttributes() {
 	group.Attributes = group.Attributes[:0]
 }
 
-func (group *CGroup) GetsAttribute(name string) (string, error) {
-	for _, attr := range group.Attributes {
-		if strings.EqualFold(attr.Name, name) {
-			return attr.StringValue, nil
+// GetAttribute retrieve value of attribute with specified name, or error if problem during retrieval.
+func (group *CGroup) GetAttribute(name string) (valueType, valueString string, err error) {
+	if group.Attributes != nil {
+		for _, attr := range group.Attributes {
+			if strings.EqualFold(attr.Name, name) {
+				return attr.ValueType, attr.ValueString, nil
+			}
 		}
 	}
-	return "", errors.New("attribute not found")
+	return "", "", errors.New("attribute not found")
 }
 
-func (group *CGroup) GetiAttribute(name string) (int, error) {
-	for _, attr := range group.Attributes {
-		if strings.EqualFold(attr.Name, name) {
-			return attr.IntegerValue, nil
-		}
+// SetAttribute set value attribute with specified name, type and the value in a string representation.
+// return error if problem during storing.
+func (group *CGroup) SetAttribute(attributeName, valueType, valueString string) error {
+	if group.Attributes == nil {
+		group.Attributes = make([]*Attribute, 0)
 	}
-	return -1, errors.New("attribute not found")
-}
-func (group *CGroup) GetfAttribute(name string) (float64, error) {
-	for _, attr := range group.Attributes {
-		if strings.EqualFold(attr.Name, name) {
-			return attr.FloatValue, nil
-		}
-	}
-	return -1, errors.New("attribute not found")
-}
-
-func (group *CGroup) GetbAttribute(name string) (bool, error) {
-	for _, attr := range group.Attributes {
-		if strings.EqualFold(attr.Name, name) {
-			return attr.BoolValue, nil
-		}
-	}
-	return false, errors.New("attribute not found")
-}
-
-func (group *CGroup) SetsAttribute(name, value string) error {
-	if group.HasAttribute(name) {
-		return errors.New("attribute already exists")
+	if group.HasAttribute(attributeName) {
+		return fmt.Errorf("attribute already exists")
 	}
 	group.Attributes = append(group.Attributes, &Attribute{
-		Name:         name,
-		Seq:          len(group.Attributes),
-		StringValue:  value,
-		IntegerValue: 0,
-		FloatValue:   0,
-		BoolValue:    false,
-	})
-	return nil
-}
-
-func (group *CGroup) SetiAttribute(name string, value int) error {
-	if group.HasAttribute(name) {
-		return errors.New("attribute already exists")
-	}
-	group.Attributes = append(group.Attributes, &Attribute{
-		Name:         name,
-		Seq:          len(group.Attributes),
-		StringValue:  "",
-		IntegerValue: value,
-		FloatValue:   0,
-		BoolValue:    false,
-	})
-	return nil
-}
-
-func (group *CGroup) SetfAttribute(name string, value float64) error {
-	if group.HasAttribute(name) {
-		return errors.New("attribute already exists")
-	}
-	group.Attributes = append(group.Attributes, &Attribute{
-		Name:         name,
-		Seq:          len(group.Attributes),
-		StringValue:  "",
-		IntegerValue: 0,
-		FloatValue:   value,
-		BoolValue:    false,
-	})
-	return nil
-}
-
-func (group *CGroup) SetbAttribute(name string, value bool) error {
-	if group.HasAttribute(name) {
-		return errors.New("attribute already exists")
-	}
-	group.Attributes = append(group.Attributes, &Attribute{
-		Name:         name,
-		Seq:          len(group.Attributes),
-		StringValue:  "",
-		IntegerValue: 0,
-		FloatValue:   0,
-		BoolValue:    value,
+		Name:        attributeName,
+		Seq:         len(group.Attributes),
+		ValueType:   valueType,
+		ValueString: valueString,
 	})
 	return nil
 }
