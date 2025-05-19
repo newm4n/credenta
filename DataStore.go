@@ -316,8 +316,8 @@ func (store *CredentaDB) listDataFiles(ctx context.Context, entries []os.DirEntr
 			ne := strings.Split(n[0], "_IN_")
 			id := ne[0]
 			realm := ne[1]
-			if ids, ok := ret[realm]; ok {
-				ids = append(ids, id)
+			if _, ok := ret[realm]; ok {
+				ret[realm] = append(ret[realm], id)
 			} else {
 				ret[realm] = make([]string, 0)
 				ret[realm] = append(ret[realm], id)
