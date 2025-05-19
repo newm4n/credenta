@@ -76,7 +76,7 @@ func (policy *PassphrasePolicy) IsPasswordValid(pass string) (bool, error) {
 			return false, fmt.Errorf("need more letter in passphrase word")
 		}
 	}
-	if policy.LetterCountMinimumTotal < len(realPass) {
+	if policy.LetterCountMinimumTotal > len(realPass) {
 		return false, fmt.Errorf("passphrase needs minimum %d letters", policy.LetterCountMinimumTotal)
 	}
 	if policy.MustHaveUpperAlphabet && !strings.ContainsAny(pass, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
